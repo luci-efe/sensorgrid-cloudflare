@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+dashboard/node_modules/
+
+# Wrangler
+.wrangler/
+.dev.vars
+
+# SvelteKit build output
+dashboard/.svelte-kit/
+dashboard/build/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Cloudflare Claude agents
+.agents/
+.claude/
+
+# InfluxDB binary (not needed)
+influx/influx
+influx/influxdb2-client-*.tar.gz
+
+# OS
+.DS_Store
+Thumbs.db
