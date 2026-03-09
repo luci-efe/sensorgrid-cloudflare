@@ -26,11 +26,11 @@ jobs:
         working-directory: dashboard
         env:
           VITE_USE_MOCK: false
-          VITE_WORKER_URL: https://sensorgrid-ingest.lfernando-rramos.workers.dev
+          VITE_WORKER_URL: ${{ vars.VITE_WORKER_URL }}
 
       - name: Deploy to Cloudflare Pages
         run: npx wrangler pages deploy
         working-directory: dashboard
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
