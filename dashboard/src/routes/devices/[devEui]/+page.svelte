@@ -14,10 +14,16 @@
 <svelte:head><title>SensorGrid — {data.device.name}</title></svelte:head>
 
 <div class="page-top">
-	<a href="/" class="back-link">← Overview</a>
+	<a href="/" class="back-link">← Resumen</a>
 	<div class="page-title">
 		<h1>{data.device.name}</h1>
 		<p class="location">{data.device.location}</p>
+		{#if latest?.time}
+			{@const diff = Math.floor((Date.now() - new Date(latest.time).getTime()) / 1000)}
+			<p class="freshness" class:freshness--stale={diff >= 1800}>
+				{diff < 60 ? 'hace < 1 min' : diff < 3600 ? `hace ${Math.floor(diff / 60)} min` : `hace ${Math.floor(diff / 3600)} h`}
+			</p>
+		{/if}
 	</div>
 
 	<RangeSelector current={data.range} />
@@ -159,6 +165,8 @@
 	.page-title { flex: 1; }
 	.page-title h1 { font-size: 1.25rem; }
 	.location { color: #8ba8cc; margin: 0.2rem 0 0; font-size: 0.83rem; }
+	.freshness { font-size: 0.68rem; color: #4caf50; margin: 0.2rem 0 0; }
+	.freshness--stale { color: #ff9800; }
 
 	.door-indicator {
 		display: flex;

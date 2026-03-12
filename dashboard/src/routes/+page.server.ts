@@ -1,28 +1,56 @@
 import { fetchDevices, fetchLatest, fetchReadings } from '$lib/api';
-import type { Reading } from '$lib/mock';
+import type { Device, Reading } from '$lib/mock';
 
-export const load = async () => {
+function rangeToParams(range: string): { interval: string; bucket: string } {
+	if (range === '30d') return { interval: '30 days', bucket: '4 hours' };
+	if (range === '7d')  return { interval: '7 days',  bucket: '1 hour' };
+	return                       { interval: '1 day',   bucket: '5 minutes' };
+}
+
+export type FridgeGroup = {
+	label: string;
+	am307: Device | null;
+	ct101: Device | null;
+	am307Readings: Reading[];
+	ct101Readings: Reading[];
+};
+
+export const load = async ({ url }) => {
+	const range = url.searchParams.get('range') ?? 'hoy';
+	const { interval, bucket } = rangeToParams(range);
+
 	const [devices, latest] = await Promise.all([fetchDevices(), fetchLatest()]);
 
-	const fridges  = devices.filter((d) => d.type === 'refrigerator');
-	const ambients = devices.filter((d) => d.type === 'ambient');
-	const powers   = devices.filter((d) => d.type === 'power');
+	// Group devices by fridge_label
+	const fridgeMap = new Map<string, { am307: Device | null; ct101: Device | null }>();
+	for (const d of devices) {
+		if (!d.fridge_label) continue;
+		if (!fridgeMap.has(d.fridge_label)) {
+			fridgeMap.set(d.fridge_label, { am307: null, ct101: null });
+		}
+		const group = fridgeMap.get(d.fridge_label)!;
+		if (d.type === 'ambient') group.am307 = d;
+		if (d.type === 'power')   group.ct101 = d;
+	}
 
-	// Fetch 7-day sparkline data (1h buckets → 168 points) for overview cards
-	const [fridgeArr, ambientArr, powerArr] = await Promise.all([
-		Promise.all(fridges.map((f) => fetchReadings(f.dev_eui, '7 days', '1 hour'))),
-		Promise.all(ambients.map((a) => fetchReadings(a.dev_eui, '7 days', '1 hour'))),
-		Promise.all(powers.map((p) => fetchReadings(p.dev_eui, '7 days', '1 hour'))),
-	]);
+	// Fetch sparkline readings for each pair in parallel
+	const entries = [...fridgeMap.entries()];
+	const readingResults = await Promise.all(
+		entries.map(([, { am307, ct101 }]) =>
+			Promise.all([
+				am307 ? fetchReadings(am307.dev_eui, interval, bucket) : Promise.resolve([]),
+				ct101 ? fetchReadings(ct101.dev_eui, interval, bucket) : Promise.resolve([]),
+			])
+		)
+	);
 
-	const fridgeReadings: Record<string, Reading[]> = {};
-	fridges.forEach((f, i) => { fridgeReadings[f.dev_eui] = fridgeArr[i]; });
+	const fridgeGroups: FridgeGroup[] = entries.map(([label, { am307, ct101 }], i) => ({
+		label,
+		am307,
+		ct101,
+		am307Readings: readingResults[i][0],
+		ct101Readings: readingResults[i][1],
+	}));
 
-	const ambientReadings: Record<string, Reading[]> = {};
-	ambients.forEach((a, i) => { ambientReadings[a.dev_eui] = ambientArr[i]; });
-
-	const powerReadings: Record<string, Reading[]> = {};
-	powers.forEach((p, i) => { powerReadings[p.dev_eui] = powerArr[i]; });
-
-	return { devices, latest, fridgeReadings, ambientReadings, powerReadings };
+	return { fridgeGroups, latest, range };
 };

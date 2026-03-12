@@ -15,10 +15,9 @@
 			<img src="/logo.png" alt="SensorGrid" height="32" />
 		</a>
 		<a href="/" class:active={page.url.pathname === '/'}>Resumen</a>
-		<a href="/refrigerators" class:active={page.url.pathname.startsWith('/refrigerators')}>Refrigeración</a>
-		<a href="/air-quality" class:active={page.url.pathname.startsWith('/air-quality')}>Calidad del Aire</a>
-		<a href="/devices" class:active={page.url.pathname.startsWith('/devices')}>Dispositivos</a>
+		<a href="/sensores" class:active={page.url.pathname.startsWith('/sensores')}>Sensores</a>
 		<a href="/alerts" class:active={page.url.pathname === '/alerts'}>Alertas</a>
+		<a href="/config" class:active={page.url.pathname === '/config'}>Config</a>
 	</nav>
 	<main>
 		{@render children()}

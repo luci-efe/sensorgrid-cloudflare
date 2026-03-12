@@ -22,10 +22,14 @@ export async function fetchLatest(): Promise<LatestReading[]> {
 
 export async function fetchReadings(
 	devEui: string,
-	interval = '24 hours',
+	interval = '1 day',
 	bucket = '5 minutes'
 ): Promise<Reading[]> {
-	if (USE_MOCK) return generateMockReadings(devEui);
+	if (USE_MOCK) {
+		const hours = interval.includes('30') ? 720 : interval.includes('7') ? 168 : 24;
+		const bucketMin = bucket.includes('4') ? 240 : bucket.includes('hour') ? 60 : 5;
+		return generateMockReadings(devEui, hours, bucketMin);
+	}
 	const params = new URLSearchParams({ dev_eui: devEui, interval, bucket });
 	return get<Reading[]>(`/api/readings?${params}`);
 }
