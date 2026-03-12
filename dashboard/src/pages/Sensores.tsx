@@ -45,7 +45,7 @@ function SensorCard({
   const isEmpty = !device
 
   return (
-    <div className={`rounded-xl border p-5 flex flex-col gap-3 ${isEmpty ? 'opacity-40' : ''}`}
+    <div className={`rounded-xl border p-6 flex flex-col gap-4 ${isEmpty ? 'opacity-40' : ''}`}
       style={{
         background: 'var(--surface)',
         borderColor: active ? 'var(--border)' : '#f59e0b30',
@@ -81,16 +81,21 @@ function SensorCard({
           </div>
 
           {/* Battery / power */}
-          {hasBattery ? (
+          {hasBattery && active ? (
             <div className="flex items-center gap-2">
               <Battery size={14} color={batColor(bat)} />
               <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
-                <div className="h-full rounded-full transition-all"
+                <div className="h-full rounded-full"
                   style={{ width: `${bat ?? 0}%`, background: batColor(bat) }} />
               </div>
               <span className="text-xs font-semibold tabular-nums" style={{ color: batColor(bat) }}>
                 {bat?.toFixed(0) ?? '—'}%
               </span>
+            </div>
+          ) : hasBattery ? (
+            <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--muted)' }}>
+              <Battery size={13} />
+              <span>Batería desconocida — sensor inactivo</span>
             </div>
           ) : (
             <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--muted)' }}>
@@ -143,7 +148,7 @@ export default function Sensores() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold mb-6" style={{ color: 'var(--text)' }}>Sensores</h1>
+      <h1 className="text-2xl font-bold mb-6" style={{ color: 'var(--text)' }}>Sensores</h1>
 
       {groups.map(g => (
         <section key={g.label} className="mb-8">

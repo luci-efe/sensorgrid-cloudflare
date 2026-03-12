@@ -19,8 +19,9 @@ export default {
 
         const rows = await sql`
           SELECT
-            time_bucket(${bucket}::interval, time) AS bucket,
-            dev_eui,
+            time_bucket_gapfill(${bucket}::interval, time,
+              NOW() - ${interval}::interval, NOW()) AS bucket,
+            ${devEui} AS dev_eui,
             AVG(laeq)          AS laeq,
             MAX(lamax)         AS lamax,
             AVG(temperature)   AS temperature,
@@ -39,9 +40,10 @@ export default {
             BOOL_OR(pir)       AS pir
           FROM readings
           WHERE time > NOW() - ${interval}::interval
+            AND time <= NOW()
             AND dev_eui = ${devEui}
-          GROUP BY bucket, dev_eui
-          ORDER BY bucket DESC
+          GROUP BY bucket
+          ORDER BY bucket ASC
         `;
         return new Response(JSON.stringify(rows), { headers });
       }

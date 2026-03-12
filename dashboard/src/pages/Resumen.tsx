@@ -71,10 +71,9 @@ function countDoorOpens(readings: Reading[]): number {
 }
 
 function toChartData(readings: Reading[], key: keyof Reading): ChartPoint[] {
-  return readings.map(r => ({
-    v: r[key] as number | null,
-    t: new Date(r.bucket).getTime(),
-  }))
+  return readings
+    .map(r => ({ v: r[key] as number | null, t: new Date(r.bucket).getTime() }))
+    .sort((a, b) => a.t - b.t)
 }
 
 /** Format an X-axis timestamp depending on the active range. */
@@ -125,13 +124,13 @@ function MetricTile({
 
   return (
     <div
-      className="rounded-xl border p-4 flex flex-col gap-2"
+      className="rounded-xl border p-5 flex flex-col gap-3"
       style={{ background: 'var(--surface)', borderColor: 'var(--border)', borderLeft: `3px solid ${color}` }}
     >
       {/* Tile header */}
       <div className="flex items-center gap-1.5">
         <span style={{ color }}>{icon}</span>
-        <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
+        <span className="text-sm font-semibold uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
           {label}
         </span>
         {unit && (
@@ -186,7 +185,7 @@ function MetricTile({
                 strokeWidth={2}
                 fill={`url(#${gradId})`}
                 dot={false}
-                connectNulls
+                connectNulls={false}
                 activeDot={{ r: 3, fill: color, stroke: 'var(--surface)', strokeWidth: 2 }}
               />
 
@@ -216,7 +215,7 @@ function MetricTile({
 
       {/* Current value */}
       <div className="flex items-baseline gap-1 pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
-        <span className="text-xl font-bold tabular-nums" style={{ color }}>
+        <span className="text-2xl font-bold tabular-nums" style={{ color }}>
           {value}
         </span>
         {unit && <span className="text-xs" style={{ color: 'var(--muted)' }}>{unit}</span>}
@@ -231,7 +230,7 @@ function MetricTile({
 // ── Door tile ──────────────────────────────────────────────────────────────
 function DoorTile({ open, opens }: { open: boolean; opens: number }) {
   return (
-    <div className="rounded-xl border p-4 flex flex-col gap-3"
+    <div className="rounded-xl border p-5 flex flex-col gap-3"
       style={{
         background: open ? '#1a0808' : 'var(--surface)',
         borderColor: open ? 'var(--danger)' : 'var(--border)',
@@ -241,7 +240,7 @@ function DoorTile({ open, opens }: { open: boolean; opens: number }) {
         <span style={{ color: open ? 'var(--danger)' : 'var(--success)' }}>
           {open ? <DoorOpen size={14} /> : <DoorClosed size={14} />}
         </span>
-        <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
+        <span className="text-sm font-semibold uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
           Puerta
         </span>
       </div>
@@ -280,7 +279,7 @@ function FridgeSection({ group, latest, range }: { group: FridgeGroup; latest: L
   return (
     <section className="mb-10">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-base font-semibold flex items-center gap-2" style={{ color: 'var(--text)' }}>
+        <h2 className="text-lg font-semibold flex items-center gap-2" style={{ color: 'var(--text)' }}>
           🧊 {group.label}
         </h2>
         {lastTime && (
@@ -297,7 +296,7 @@ function FridgeSection({ group, latest, range }: { group: FridgeGroup; latest: L
           <p className="text-sm" style={{ color: 'var(--muted)' }}>Sin datos disponibles</p>
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-4">
           <MetricTile
             label="Temperatura" icon={<Thermometer size={14} />}
             value={amL?.temperature?.toFixed(1) ?? '—'} unit="°C"
@@ -417,7 +416,7 @@ export default function Resumen() {
           {[0, 1].map(i => (
             <div key={i}>
               <div className="h-5 w-48 rounded mb-4" style={{ background: 'var(--border)' }} />
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-4">
                 {[0, 1, 2, 3, 4, 5].map(j => (
                   <div key={j} className="rounded-xl border p-4 h-56" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }} />
                 ))}

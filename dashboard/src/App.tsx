@@ -17,7 +17,7 @@ export default function App() {
     <BrowserRouter>
       <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg)' }}>
         {/* Nav */}
-        <nav className="sticky top-0 z-10 flex items-center gap-1 px-6 h-14 border-b"
+        <nav className="sticky top-0 z-10 flex items-center gap-1 px-8 h-16 border-b"
           style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
           <NavLink to="/" className="mr-auto flex items-center">
             <Logo />
@@ -42,7 +42,7 @@ export default function App() {
         </nav>
 
         {/* Content */}
-        <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-6">
+        <main className="flex-1 max-w-7xl w-full mx-auto px-8 py-8">
           <Routes>
             <Route path="/" element={<Resumen />} />
             <Route path="/sensores" element={<Sensores />} />
