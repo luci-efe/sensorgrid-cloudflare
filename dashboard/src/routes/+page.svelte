@@ -22,6 +22,13 @@
 		return 'crit';
 	}
 
+	function co2Status(v: number | null): { label: string; cls: string } {
+		if (v === null) return { label: '—', cls: 'neutral' };
+		if (v < 800) return { label: 'Bueno', cls: 'good' };
+		if (v < 1200) return { label: 'Moderado', cls: 'moderate' };
+		return { label: 'Alto', cls: 'poor' };
+	}
+
 	function pm25Status(v: number | null): { label: string; cls: string } {
 		if (v === null) return { label: '—', cls: 'neutral' };
 		if (v < 15) return { label: 'Bueno', cls: 'good' };
@@ -36,45 +43,26 @@
 		return { label: 'Alto', cls: 'poor' };
 	}
 
-	// Build sparkline SVG path from last N temperature readings
-	function sparklinePath(devEui: string, lastN = 24): string {
-		const readings = (data.fridgeReadings[devEui] ?? []).slice(-lastN);
-		const temps = readings.map((r: { temperature: number | null }) => r.temperature).filter((v: number | null) => v !== null) as number[];
-		if (temps.length < 2) return '';
-		const min = Math.min(...temps);
-		const max = Math.max(...temps);
-		const range = max - min || 1;
-		const W = 100;
-		const H = 28;
-		const pts = temps
-			.map((v, i) => `${(i / (temps.length - 1)) * W},${H - ((v - min) / range) * H}`)
-			.join(' ');
-		return pts;
-	}
-
-	const fridges = $derived(data.devices.filter((d: { type: string }) => d.type === 'refrigerator'));
-	const airQualityDevices = $derived(data.devices.filter((d: { type: string }) => d.type === 'air_quality'));
-	const ambientDevices = $derived(data.devices.filter((d: { type: string }) => d.type === 'ambient'));
-	const powerDevices = $derived(data.devices.filter((d: { type: string }) => d.type === 'power'));
-
-	const TYPE_LABELS: Record<string, string> = {
-		refrigerator: 'Refrigerador',
-		air_quality: 'Calidad del Aire',
-		ambient: 'Ambiental',
-		power: 'Energía',
-		sound: 'Sonido',
-	};
-
-	function sparklinePathFor(devEui: string, readings: Record<string, { bucket: string; [k: string]: unknown }[]>, key: string, lastN = 48): string {
-		const data = (readings[devEui] ?? []).slice(-lastN);
-		const vals = data.map((r) => r[key] as number | null).filter((v) => v !== null) as number[];
+	function sparklinePathFor(
+		devEui: string,
+		readings: Record<string, { bucket: string; [k: string]: unknown }[]>,
+		key: string,
+		lastN = 48
+	): string {
+		const pts = (readings[devEui] ?? []).slice(-lastN);
+		const vals = pts.map((r) => r[key] as number | null).filter((v) => v !== null) as number[];
 		if (vals.length < 2) return '';
 		const min = Math.min(...vals);
 		const max = Math.max(...vals);
 		const range = max - min || 1;
-		const W = 100; const H = 28;
+		const W = 100; const H = 48;
 		return vals.map((v, i) => `${(i / (vals.length - 1)) * W},${H - ((v - min) / range) * H}`).join(' ');
 	}
+
+	const fridges        = $derived(data.devices.filter((d: { type: string }) => d.type === 'refrigerator'));
+	const airQualityDevices = $derived(data.devices.filter((d: { type: string }) => d.type === 'air_quality'));
+	const ambientDevices = $derived(data.devices.filter((d: { type: string }) => d.type === 'ambient'));
+	const powerDevices   = $derived(data.devices.filter((d: { type: string }) => d.type === 'power'));
 </script>
 
 <svelte:head><title>SensorGrid — Resumen</title></svelte:head>
@@ -84,17 +72,17 @@
 	<span class="timestamp">Actualizado {lastUpdated}</span>
 </div>
 
-<!-- Refrigeración section -->
+<!-- ── Refrigeración ─────────────────────────────────────────────── -->
 {#if fridges.length > 0}
 <section>
 	<h2 class="section-title">🧊 Refrigeración</h2>
-	<div class="fridge-grid">
+	<div class="device-grid">
 		{#each fridges as device}
 			{@const reading = latestFor(device.dev_eui)}
 			{@const temp = reading?.temperature ?? null}
 			{@const doorOpen = reading?.door_open ?? false}
 			{@const spkPts = sparklinePathFor(device.dev_eui, data.fridgeReadings, 'temperature')}
-			<a href="/devices/{device.dev_eui}" class="card fridge-card">
+			<a href="/devices/{device.dev_eui}" class="card">
 				<div class="card-header">
 					<div>
 						<p class="card-name">{device.name}</p>
@@ -107,77 +95,83 @@
 					{/if}
 				</div>
 
-				<div class="temp-display" style="color: {tempColor(temp)}">
-					{temp !== null ? temp.toFixed(1) + ' °C' : '—'}
+				<div class="primary-metric" style="color: {tempColor(temp)}">
+					{temp !== null ? temp.toFixed(1) : '—'}
+					<span class="primary-unit">°C</span>
 				</div>
 
-				<!-- Sparkline -->
-				<div class="sparkline-wrap">
-					{#if spkPts}
-						<svg viewBox="0 0 100 28" width="100%" height="36" preserveAspectRatio="none">
-							<polyline
-								points={spkPts}
-								fill="none"
-								stroke={tempColor(temp)}
-								stroke-width="1.5"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-							/>
+				<div class="secondary-metrics">
+					<div class="sec-item">
+						<span class="sec-val">{reading?.humidity?.toFixed(0) ?? '—'}</span>
+						<span class="sec-lbl">% Humedad</span>
+					</div>
+					<div class="sec-item">
+						<span class="sec-val battery--{batteryClass(reading?.battery ?? null)}">{reading?.battery?.toFixed(0) ?? '—'}%</span>
+						<span class="sec-lbl">Batería</span>
+					</div>
+				</div>
+
+				{#if spkPts}
+					<div class="sparkline-wrap">
+						<svg viewBox="0 0 100 48" width="100%" height="64" preserveAspectRatio="none">
+							<polyline points={spkPts} fill="none" stroke={tempColor(temp)}
+								stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
 						</svg>
-					{/if}
-					<span class="sparkline-label">Últimos 7 días</span>
-				</div>
-
-				<div class="card-footer">
-					<span class="badge badge--type">{TYPE_LABELS['refrigerator']}</span>
-					{#if reading}
-						<span class="battery battery--{batteryClass(reading.battery)}">
-							🔋 {reading.battery !== null ? reading.battery.toFixed(0) + '%' : '—'}
-						</span>
-					{/if}
-				</div>
+						<span class="sparkline-label">Temperatura — Últimos 7 días</span>
+					</div>
+				{/if}
 			</a>
 		{/each}
 	</div>
 </section>
 {/if}
 
-<!-- Calidad del Aire -->
+<!-- ── Calidad del Aire ──────────────────────────────────────────── -->
 {#if airQualityDevices.length > 0}
 <section>
 	<h2 class="section-title">💨 Calidad del Aire</h2>
-	<div class="ambient-grid">
+	<div class="device-grid">
 		{#each airQualityDevices as device}
 			{@const reading = latestFor(device.dev_eui)}
-			<a href="/devices/{device.dev_eui}" class="card ambient-card">
+			{@const s25 = pm25Status(reading?.pm25 ?? null)}
+			{@const sv  = vocStatus(reading?.voc_index ?? null)}
+			<a href="/devices/{device.dev_eui}" class="card">
 				<div class="card-header">
-					<span class="icon">💨</span>
 					<div>
 						<p class="card-name">{device.name}</p>
 						<p class="card-loc">{device.location}</p>
 					</div>
+					<span class="badge badge--{s25.cls}">{s25.label}</span>
 				</div>
-				{#if reading}
-					<div class="aq-metrics">
-						<div class="aq-item">
-							<span class="aq-val">{reading.pm25?.toFixed(1) ?? '—'}</span>
-							<span class="aq-unit">µg/m³ PM2.5</span>
-							<span class="badge badge--{pm25Status(reading.pm25).cls}">{pm25Status(reading.pm25).label}</span>
-						</div>
-						<div class="aq-item">
-							<span class="aq-val">{reading.voc_index?.toFixed(0) ?? '—'}</span>
-							<span class="aq-unit">VOC Index</span>
-							<span class="badge badge--{vocStatus(reading.voc_index).cls}">{vocStatus(reading.voc_index).label}</span>
-						</div>
+
+				<div class="multi-metrics">
+					<div class="metric-block metric-block--large">
+						<span class="metric-block-val">{reading?.pm25?.toFixed(1) ?? '—'}</span>
+						<span class="metric-block-unit">µg/m³</span>
+						<span class="metric-block-lbl">PM2.5</span>
 					</div>
-				{/if}
+					<div class="metric-block metric-block--large">
+						<span class="metric-block-val">{reading?.pm10?.toFixed(1) ?? '—'}</span>
+						<span class="metric-block-unit">µg/m³</span>
+						<span class="metric-block-lbl">PM10</span>
+					</div>
+					<div class="metric-block">
+						<span class="metric-block-val badge--{sv.cls}-text">{reading?.voc_index?.toFixed(0) ?? '—'}</span>
+						<span class="metric-block-unit">índice</span>
+						<span class="metric-block-lbl">VOC</span>
+						<span class="badge badge--{sv.cls}" style="margin-top:0.25rem">{sv.label}</span>
+					</div>
+					<div class="metric-block">
+						<span class="metric-block-val">{reading?.humidity?.toFixed(0) ?? '—'}</span>
+						<span class="metric-block-unit">%</span>
+						<span class="metric-block-lbl">Humedad</span>
+					</div>
+				</div>
+
 				<div class="card-footer">
-					<span class="badge badge--type">{TYPE_LABELS['air_quality']}</span>
-					{#if reading}
-						<span class="battery battery--{batteryClass(reading.battery)}">
-							🔋 {reading.battery !== null ? reading.battery.toFixed(0) + '%' : '—'}
-						</span>
-					{/if}
+					<span class="battery battery--{batteryClass(reading?.battery ?? null)}">
+						🔋 {reading?.battery?.toFixed(0) ?? '—'}%
+					</span>
 				</div>
 			</a>
 		{/each}
@@ -185,94 +179,104 @@
 </section>
 {/if}
 
-<!-- Ambiente (7-in-1) -->
+<!-- ── Ambiente (7-en-1) ─────────────────────────────────────────── -->
 {#if ambientDevices.length > 0}
 <section>
 	<h2 class="section-title">🌡️ Ambiente</h2>
-	<div class="ambient-grid">
+	<div class="device-grid">
 		{#each ambientDevices as device}
 			{@const reading = latestFor(device.dev_eui)}
+			{@const sc = co2Status(reading?.co2 ?? null)}
 			{@const co2Pts = sparklinePathFor(device.dev_eui, data.ambientReadings, 'co2')}
-			<a href="/devices/{device.dev_eui}" class="card ambient-card">
+			<a href="/devices/{device.dev_eui}" class="card">
 				<div class="card-header">
-					<span class="icon">🌡️</span>
 					<div>
 						<p class="card-name">{device.name}</p>
 						<p class="card-loc">{device.location}</p>
 					</div>
+					<span class="badge badge--{sc.cls}">{sc.label}</span>
 				</div>
-				{#if reading}
-					<div class="aq-metrics">
-						<div class="aq-item">
-							<span class="aq-val">{reading.temperature?.toFixed(1) ?? '—'}</span>
-							<span class="aq-unit">°C Temp</span>
-						</div>
-						<div class="aq-item">
-							<span class="aq-val">{reading.co2?.toFixed(0) ?? '—'}</span>
-							<span class="aq-unit">ppm CO₂</span>
-						</div>
+
+				<div class="primary-metric" style="color: #ef9a9a">
+					{reading?.co2?.toFixed(0) ?? '—'}
+					<span class="primary-unit">ppm CO₂</span>
+				</div>
+
+				<div class="secondary-metrics">
+					<div class="sec-item">
+						<span class="sec-val">{reading?.temperature?.toFixed(1) ?? '—'}</span>
+						<span class="sec-lbl">°C Temp</span>
 					</div>
-				{/if}
+					<div class="sec-item">
+						<span class="sec-val">{reading?.humidity?.toFixed(0) ?? '—'}</span>
+						<span class="sec-lbl">% Humedad</span>
+					</div>
+					<div class="sec-item">
+						<span class="sec-val">{reading?.tvoc ?? '—'}</span>
+						<span class="sec-lbl">TVOC ppb</span>
+					</div>
+					<div class="sec-item">
+						<span class="sec-val battery--{batteryClass(reading?.battery ?? null)}">{reading?.battery?.toFixed(0) ?? '—'}%</span>
+						<span class="sec-lbl">Batería</span>
+					</div>
+				</div>
+
 				{#if co2Pts}
 					<div class="sparkline-wrap">
-						<svg viewBox="0 0 100 28" width="100%" height="36" preserveAspectRatio="none">
-							<polyline points={co2Pts} fill="none" stroke="#ef9a9a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+						<svg viewBox="0 0 100 48" width="100%" height="64" preserveAspectRatio="none">
+							<polyline points={co2Pts} fill="none" stroke="#ef9a9a"
+								stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
 						</svg>
 						<span class="sparkline-label">CO₂ — Últimos 7 días</span>
 					</div>
 				{/if}
-				<div class="card-footer">
-					<span class="badge badge--type">{TYPE_LABELS[device.type] ?? device.type}</span>
-					{#if reading}
-						<span class="battery battery--{batteryClass(reading.battery)}">
-							🔋 {reading.battery !== null ? reading.battery.toFixed(0) + '%' : '—'}
-						</span>
-					{/if}
-				</div>
 			</a>
 		{/each}
 	</div>
 </section>
 {/if}
 
-<!-- Corriente / Energía -->
+<!-- ── Corriente / Energía ───────────────────────────────────────── -->
 {#if powerDevices.length > 0}
 <section>
 	<h2 class="section-title">⚡ Corriente / Energía</h2>
-	<div class="ambient-grid">
+	<div class="device-grid">
 		{#each powerDevices as device}
 			{@const reading = latestFor(device.dev_eui)}
 			{@const currentPts = sparklinePathFor(device.dev_eui, data.powerReadings, 'total_current')}
-			<a href="/devices/{device.dev_eui}" class="card ambient-card">
+			<a href="/devices/{device.dev_eui}" class="card">
 				<div class="card-header">
-					<span class="icon">⚡</span>
 					<div>
 						<p class="card-name">{device.name}</p>
 						<p class="card-loc">{device.location}</p>
 					</div>
 				</div>
-				{#if reading}
-					<div class="metric">
-						<span class="metric-value">{reading.total_current?.toFixed(2) ?? '—'}</span>
-						<span class="metric-label">A corriente total</span>
+
+				<div class="primary-metric" style="color: var(--color-accent)">
+					{reading?.total_current?.toFixed(2) ?? '—'}
+					<span class="primary-unit">A total</span>
+				</div>
+
+				<div class="secondary-metrics">
+					<div class="sec-item">
+						<span class="sec-val">{reading?.current?.toFixed(2) ?? '—'}</span>
+						<span class="sec-lbl">A corriente</span>
 					</div>
-				{/if}
+					<div class="sec-item">
+						<span class="sec-val battery--{batteryClass(reading?.battery ?? null)}">{reading?.battery?.toFixed(0) ?? '—'}%</span>
+						<span class="sec-lbl">Batería</span>
+					</div>
+				</div>
+
 				{#if currentPts}
 					<div class="sparkline-wrap">
-						<svg viewBox="0 0 100 28" width="100%" height="36" preserveAspectRatio="none">
-							<polyline points={currentPts} fill="none" stroke="#ff9800" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+						<svg viewBox="0 0 100 48" width="100%" height="64" preserveAspectRatio="none">
+							<polyline points={currentPts} fill="none" stroke="#ff9800"
+								stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
 						</svg>
-						<span class="sparkline-label">Corriente — Últimos 7 días</span>
+						<span class="sparkline-label">Corriente total — Últimos 7 días</span>
 					</div>
 				{/if}
-				<div class="card-footer">
-					<span class="badge badge--type">{TYPE_LABELS[device.type] ?? device.type}</span>
-					{#if reading}
-						<span class="battery battery--{batteryClass(reading.battery)}">
-							🔋 {reading.battery !== null ? reading.battery.toFixed(0) + '%' : '—'}
-						</span>
-					{/if}
-				</div>
 			</a>
 		{/each}
 	</div>
@@ -288,45 +292,41 @@
 		display: flex;
 		align-items: baseline;
 		gap: 1rem;
-		margin-bottom: 1.75rem;
+		margin-bottom: 2rem;
 	}
-	.page-header h1 { font-size: 1.35rem; color: var(--color-light); }
-	.timestamp { font-size: 0.75rem; color: #8ba8cc; }
+	.page-header h1 { font-size: 1.5rem; color: var(--color-light); }
+	.timestamp { font-size: 0.78rem; color: #8ba8cc; }
 
-	section { margin-bottom: 2rem; }
+	section { margin-bottom: 2.5rem; }
 
 	.section-title {
-		font-size: 0.85rem;
+		font-size: 1rem;
 		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
-		color: #8ba8cc;
-		margin-bottom: 0.75rem;
-		padding-bottom: 0.4rem;
+		color: var(--color-light);
+		margin-bottom: 1rem;
+		padding-bottom: 0.5rem;
 		border-bottom: 1px solid var(--color-border);
 	}
 
-	.fridge-grid {
+	.device-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-		gap: 1rem;
+		grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+		gap: 1.25rem;
 	}
-	.ambient-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-		gap: 1rem;
+	@media (max-width: 480px) {
+		.device-grid { grid-template-columns: 1fr; }
 	}
 
 	.card {
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
-		border-radius: 0.75rem;
-		padding: 1.25rem;
+		border-radius: 0.875rem;
+		padding: 1.5rem;
 		text-decoration: none;
 		color: inherit;
 		display: flex;
 		flex-direction: column;
-		gap: 0.85rem;
+		gap: 1rem;
 		transition: border-color 0.15s, background 0.15s;
 	}
 	.card:hover {
@@ -340,59 +340,79 @@
 		justify-content: space-between;
 		gap: 0.75rem;
 	}
-	.icon { font-size: 1.5rem; line-height: 1; margin-right: 0.25rem; }
-	.card-name { font-weight: 600; font-size: 0.9rem; margin: 0; }
-	.card-loc { font-size: 0.73rem; color: #8ba8cc; margin: 0.15rem 0 0; }
+	.card-name { font-weight: 700; font-size: 1rem; margin: 0; color: var(--color-light); }
+	.card-loc  { font-size: 0.78rem; color: #8ba8cc; margin: 0.2rem 0 0; }
 
-	.temp-display {
-		font-size: 2.2rem;
+	/* Large primary number */
+	.primary-metric {
+		font-size: 3rem;
 		font-weight: 700;
 		line-height: 1;
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+	}
+	.primary-unit {
+		font-size: 1rem;
+		font-weight: 400;
+		color: #8ba8cc;
 	}
 
+	/* Secondary row of smaller metrics */
+	.secondary-metrics {
+		display: flex;
+		gap: 1.5rem;
+		flex-wrap: wrap;
+	}
+	.sec-item { display: flex; flex-direction: column; gap: 0.15rem; }
+	.sec-val  { font-size: 1.25rem; font-weight: 600; color: var(--color-light); }
+	.sec-lbl  { font-size: 0.7rem; color: #8ba8cc; text-transform: uppercase; letter-spacing: 0.04em; }
+
+	/* Multi-metric grid (air quality) */
+	.multi-metrics {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem 1.5rem;
+	}
+	.metric-block { display: flex; flex-direction: column; gap: 0.1rem; }
+	.metric-block--large .metric-block-val { font-size: 2rem; }
+	.metric-block-val  { font-size: 1.5rem; font-weight: 700; color: var(--color-light); line-height: 1; }
+	.metric-block-unit { font-size: 0.7rem; color: #8ba8cc; }
+	.metric-block-lbl  { font-size: 0.72rem; color: #8ba8cc; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 0.15rem; }
+
+	/* Sparkline */
 	.sparkline-wrap {
 		display: flex;
 		flex-direction: column;
-		gap: 0.2rem;
+		gap: 0.25rem;
 	}
-	.sparkline-label { font-size: 0.65rem; color: #8ba8cc; text-align: right; }
+	.sparkline-label { font-size: 0.68rem; color: #8ba8cc; text-align: right; }
 
-	.metric { display: flex; align-items: baseline; gap: 0.4rem; }
-	.metric-value { font-size: 1.75rem; font-weight: 700; color: var(--color-cold); }
-	.metric-label { font-size: 0.75rem; color: #8ba8cc; }
-
-	.aq-metrics { display: flex; gap: 1.25rem; }
-	.aq-item { display: flex; flex-direction: column; gap: 0.2rem; }
-	.aq-val { font-size: 1.5rem; font-weight: 700; color: var(--color-light); }
-	.aq-unit { font-size: 0.65rem; color: #8ba8cc; }
-
-	.card-footer { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+	.card-footer { display: flex; align-items: center; }
 
 	.badge {
-		font-size: 0.68rem;
-		padding: 0.2rem 0.5rem;
+		font-size: 0.72rem;
+		padding: 0.25rem 0.6rem;
 		border-radius: 999px;
 		font-weight: 600;
+		white-space: nowrap;
 	}
-	.badge--type { background: #0d2a50; color: #8ba8cc; text-transform: uppercase; }
-	.badge--danger { background: #3b0a0a; color: var(--color-danger); }
-	.badge--success { background: #0a2a14; color: var(--color-success); }
-	.badge--good { background: #0a2a14; color: #4caf50; }
+	.badge--danger   { background: #3b0a0a; color: var(--color-danger); }
+	.badge--success  { background: #0a2a14; color: var(--color-success); }
+	.badge--good     { background: #0a2a14; color: #4caf50; }
 	.badge--moderate { background: #2a200a; color: #ff9800; }
-	.badge--poor { background: #2a0a0a; color: #ef5350; }
-	.badge--neutral { background: #1a2a3a; color: #8ba8cc; }
+	.badge--poor     { background: #2a0a0a; color: #ef5350; }
+	.badge--neutral  { background: #1a2a3a; color: #8ba8cc; }
 
-	.pulse {
-		animation: pulse 1.2s ease-in-out infinite;
-	}
+	.pulse { animation: pulse 1.2s ease-in-out infinite; }
 	@keyframes pulse {
 		0%, 100% { opacity: 1; }
 		50% { opacity: 0.5; }
 	}
 
-	.battery { font-size: 0.75rem; margin-left: auto; }
-	.battery--ok   { color: #4caf50; }
-	.battery--warn { color: #ff9800; }
-	.battery--crit { color: #ef5350; }
+	.battery { font-size: 0.82rem; }
+	.battery--ok      { color: #4caf50; }
+	.battery--warn    { color: #ff9800; }
+	.battery--crit    { color: #ef5350; }
 	.battery--unknown { color: #8ba8cc; }
 </style>
