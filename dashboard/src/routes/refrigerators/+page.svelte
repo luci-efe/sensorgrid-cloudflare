@@ -36,13 +36,20 @@
 	}
 </script>
 
-<svelte:head><title>SensorGrid — Refrigerators</title></svelte:head>
+<svelte:head><title>SensorGrid — Refrigeración</title></svelte:head>
 
 <div class="page-header">
 	<h1>Refrigeración</h1>
 	<span class="subtitle">Rango seguro: 1–4 °C</span>
 	<RangeSelector current={data.range} />
 </div>
+
+{#if data.fridges.length === 0}
+	<div class="empty-state">
+		<p class="empty-title">Sin refrigeradores configurados</p>
+		<p class="empty-sub">Los sensores de temperatura y puerta deben registrarse en la base de datos con tipo <code>refrigerator</code>. Los sensores aún no han sido instalados.</p>
+	</div>
+{/if}
 
 <div class="fridge-cols">
 	{#each data.fridges as fridge}
@@ -127,6 +134,18 @@
 </div>
 
 <style>
+	.empty-state {
+		background: var(--color-surface);
+		border: 1px dashed var(--color-border);
+		border-radius: 0.75rem;
+		padding: 2rem;
+		margin-bottom: 1.5rem;
+		text-align: center;
+	}
+	.empty-title { font-size: 1rem; font-weight: 600; color: #8ba8cc; margin: 0 0 0.5rem; }
+	.empty-sub { font-size: 0.82rem; color: #4a6a8a; margin: 0; }
+	.empty-sub code { color: var(--color-accent); background: #0d1f3a; padding: 0.1rem 0.3rem; border-radius: 0.25rem; }
+
 	.page-header {
 		display: flex;
 		align-items: baseline;

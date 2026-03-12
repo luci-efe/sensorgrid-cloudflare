@@ -29,7 +29,7 @@
 		enabled: true
 	});
 
-	const METRICS = ['laeq', 'lamax', 'temperature', 'humidity', 'pm25', 'pm10', 'voc_index', 'battery'];
+	const METRICS = ['temperature', 'humidity', 'co2', 'tvoc', 'pm25', 'pm10', 'voc_index', 'total_current', 'current', 'battery'];
 
 	async function loadRules() {
 		loading = true;
@@ -38,7 +38,7 @@
 			const res = await fetch(`${WORKER_URL}/api/alert-rules`);
 			rules = await res.json();
 		} catch {
-			error = 'Could not load alert rules. Is the Worker deployed?';
+			error = 'No se pudieron cargar las reglas de alerta. ¿Está el Worker desplegado?';
 		} finally {
 			loading = false;
 		}
@@ -60,9 +60,9 @@
 	});
 </script>
 
-<svelte:head><title>SensorGrid — Alerts</title></svelte:head>
+<svelte:head><title>SensorGrid — Alertas</title></svelte:head>
 
-<h1 style="margin-bottom:1.25rem; font-size:1.25rem;">Alert Rules</h1>
+<h1 style="margin-bottom:1.25rem; font-size:1.25rem;">Reglas de Alerta</h1>
 
 {#if error}
 	<p style="color:#f87171; background:#1f0a0a; padding:0.75rem 1rem; border-radius:0.5rem; margin-bottom:1rem;">
@@ -72,10 +72,10 @@
 
 <!-- Add rule form -->
 <div class="card" style="margin-bottom:1.5rem;">
-	<h2 style="font-size:0.9rem; margin-bottom:1rem; color:#9ca3af;">New Alert Rule</h2>
+	<h2 style="font-size:0.9rem; margin-bottom:1rem; color:#8ba8cc;">Nueva Regla de Alerta</h2>
 	<div class="form-row">
 		<label>
-			Device
+			Dispositivo
 			<select bind:value={form.dev_eui}>
 				{#each data.devices as d}
 					<option value={d.dev_eui}>{d.name}</option>
@@ -83,44 +83,44 @@
 			</select>
 		</label>
 		<label>
-			Metric
+			Métrica
 			<select bind:value={form.metric}>
 				{#each METRICS as m}<option value={m}>{m}</option>{/each}
 			</select>
 		</label>
 		<label>
-			Condition
+			Condición
 			<select bind:value={form.operator}>
-				<option value="gt">Above (&gt;)</option>
-				<option value="lt">Below (&lt;)</option>
-				<option value="eq">Equals (=)</option>
+				<option value="gt">Mayor que (&gt;)</option>
+				<option value="lt">Menor que (&lt;)</option>
+				<option value="eq">Igual a (=)</option>
 			</select>
 		</label>
 		<label>
-			Threshold
+			Umbral
 			<input type="number" bind:value={form.threshold} step="0.1" />
 		</label>
 		<label>
 			Telegram Chat ID
 			<input type="text" bind:value={form.telegram_chat_id} placeholder="-100123456789" />
 		</label>
-		<button onclick={addRule}>Add Rule</button>
+		<button onclick={addRule}>Agregar Regla</button>
 	</div>
 </div>
 
 <!-- Rules table -->
 {#if loading}
-	<p style="color:#6b7280;">Loading…</p>
+	<p style="color:#8ba8cc;">Cargando…</p>
 {:else}
 	<table>
 		<thead>
 			<tr>
-				<th>Device</th>
-				<th>Metric</th>
-				<th>Condition</th>
-				<th>Threshold</th>
+				<th>Dispositivo</th>
+				<th>Métrica</th>
+				<th>Condición</th>
+				<th>Umbral</th>
 				<th>Telegram Chat</th>
-				<th>Enabled</th>
+				<th>Activa</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -136,7 +136,7 @@
 				</tr>
 			{/each}
 			{#if rules.length === 0}
-				<tr><td colspan="6" style="color:#6b7280; text-align:center;">No alert rules yet.</td></tr>
+				<tr><td colspan="6" style="color:#8ba8cc; text-align:center;">No hay reglas de alerta aún.</td></tr>
 			{/if}
 		</tbody>
 	</table>

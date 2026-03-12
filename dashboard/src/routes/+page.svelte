@@ -56,12 +56,31 @@
 	const airQualityDevices = $derived(data.devices.filter((d: { type: string }) => d.type === 'air_quality'));
 	const ambientDevices = $derived(data.devices.filter((d: { type: string }) => d.type === 'ambient'));
 	const powerDevices = $derived(data.devices.filter((d: { type: string }) => d.type === 'power'));
+
+	const TYPE_LABELS: Record<string, string> = {
+		refrigerator: 'Refrigerador',
+		air_quality: 'Calidad del Aire',
+		ambient: 'Ambiental',
+		power: 'Energía',
+		sound: 'Sonido',
+	};
+
+	function sparklinePathFor(devEui: string, readings: Record<string, { bucket: string; [k: string]: unknown }[]>, key: string, lastN = 48): string {
+		const data = (readings[devEui] ?? []).slice(-lastN);
+		const vals = data.map((r) => r[key] as number | null).filter((v) => v !== null) as number[];
+		if (vals.length < 2) return '';
+		const min = Math.min(...vals);
+		const max = Math.max(...vals);
+		const range = max - min || 1;
+		const W = 100; const H = 28;
+		return vals.map((v, i) => `${(i / (vals.length - 1)) * W},${H - ((v - min) / range) * H}`).join(' ');
+	}
 </script>
 
-<svelte:head><title>SensorGrid — Overview</title></svelte:head>
+<svelte:head><title>SensorGrid — Resumen</title></svelte:head>
 
 <div class="page-header">
-	<h1>Overview</h1>
+	<h1>Resumen</h1>
 	<span class="timestamp">Actualizado {lastUpdated}</span>
 </div>
 
@@ -74,7 +93,7 @@
 			{@const reading = latestFor(device.dev_eui)}
 			{@const temp = reading?.temperature ?? null}
 			{@const doorOpen = reading?.door_open ?? false}
-			{@const spkPts = sparklinePath(device.dev_eui)}
+			{@const spkPts = sparklinePathFor(device.dev_eui, data.fridgeReadings, 'temperature')}
 			<a href="/devices/{device.dev_eui}" class="card fridge-card">
 				<div class="card-header">
 					<div>
@@ -110,7 +129,7 @@
 				</div>
 
 				<div class="card-footer">
-					<span class="badge badge--type">refrigerator</span>
+					<span class="badge badge--type">{TYPE_LABELS['refrigerator']}</span>
 					{#if reading}
 						<span class="battery battery--{batteryClass(reading.battery)}">
 							🔋 {reading.battery !== null ? reading.battery.toFixed(0) + '%' : '—'}
@@ -153,7 +172,7 @@
 					</div>
 				{/if}
 				<div class="card-footer">
-					<span class="badge badge--type">air_quality</span>
+					<span class="badge badge--type">{TYPE_LABELS['air_quality']}</span>
 					{#if reading}
 						<span class="battery battery--{batteryClass(reading.battery)}">
 							🔋 {reading.battery !== null ? reading.battery.toFixed(0) + '%' : '—'}
@@ -173,6 +192,7 @@
 	<div class="ambient-grid">
 		{#each ambientDevices as device}
 			{@const reading = latestFor(device.dev_eui)}
+			{@const co2Pts = sparklinePathFor(device.dev_eui, data.ambientReadings, 'co2')}
 			<a href="/devices/{device.dev_eui}" class="card ambient-card">
 				<div class="card-header">
 					<span class="icon">🌡️</span>
@@ -193,8 +213,16 @@
 						</div>
 					</div>
 				{/if}
+				{#if co2Pts}
+					<div class="sparkline-wrap">
+						<svg viewBox="0 0 100 28" width="100%" height="36" preserveAspectRatio="none">
+							<polyline points={co2Pts} fill="none" stroke="#ef9a9a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+						</svg>
+						<span class="sparkline-label">CO₂ — Últimos 7 días</span>
+					</div>
+				{/if}
 				<div class="card-footer">
-					<span class="badge badge--type">ambient</span>
+					<span class="badge badge--type">{TYPE_LABELS[device.type] ?? device.type}</span>
 					{#if reading}
 						<span class="battery battery--{batteryClass(reading.battery)}">
 							🔋 {reading.battery !== null ? reading.battery.toFixed(0) + '%' : '—'}
@@ -214,6 +242,7 @@
 	<div class="ambient-grid">
 		{#each powerDevices as device}
 			{@const reading = latestFor(device.dev_eui)}
+			{@const currentPts = sparklinePathFor(device.dev_eui, data.powerReadings, 'total_current')}
 			<a href="/devices/{device.dev_eui}" class="card ambient-card">
 				<div class="card-header">
 					<span class="icon">⚡</span>
@@ -228,8 +257,16 @@
 						<span class="metric-label">A corriente total</span>
 					</div>
 				{/if}
+				{#if currentPts}
+					<div class="sparkline-wrap">
+						<svg viewBox="0 0 100 28" width="100%" height="36" preserveAspectRatio="none">
+							<polyline points={currentPts} fill="none" stroke="#ff9800" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+						</svg>
+						<span class="sparkline-label">Corriente — Últimos 7 días</span>
+					</div>
+				{/if}
 				<div class="card-footer">
-					<span class="badge badge--type">power</span>
+					<span class="badge badge--type">{TYPE_LABELS[device.type] ?? device.type}</span>
 					{#if reading}
 						<span class="battery battery--{batteryClass(reading.battery)}">
 							🔋 {reading.battery !== null ? reading.battery.toFixed(0) + '%' : '—'}
