@@ -53,7 +53,9 @@
 	}
 
 	const fridges = $derived(data.devices.filter((d: { type: string }) => d.type === 'refrigerator'));
-	const others = $derived(data.devices.filter((d: { type: string }) => d.type !== 'refrigerator'));
+	const airQualityDevices = $derived(data.devices.filter((d: { type: string }) => d.type === 'air_quality'));
+	const ambientDevices = $derived(data.devices.filter((d: { type: string }) => d.type === 'ambient'));
+	const powerDevices = $derived(data.devices.filter((d: { type: string }) => d.type === 'power'));
 </script>
 
 <svelte:head><title>SensorGrid — Overview</title></svelte:head>
@@ -104,7 +106,7 @@
 							/>
 						</svg>
 					{/if}
-					<span class="sparkline-label">Últimas 2h</span>
+					<span class="sparkline-label">Últimos 7 días</span>
 				</div>
 
 				<div class="card-footer">
@@ -121,25 +123,22 @@
 </section>
 {/if}
 
-<!-- Ambiente / otros -->
-{#if others.length > 0}
+<!-- Calidad del Aire -->
+{#if airQualityDevices.length > 0}
 <section>
-	<h2 class="section-title">🌡️ Ambiente</h2>
+	<h2 class="section-title">💨 Calidad del Aire</h2>
 	<div class="ambient-grid">
-		{#each others as device}
+		{#each airQualityDevices as device}
 			{@const reading = latestFor(device.dev_eui)}
 			<a href="/devices/{device.dev_eui}" class="card ambient-card">
 				<div class="card-header">
-					<span class="icon">
-						{#if device.type === 'sound'}🔊{:else if device.type === 'air_quality'}💨{:else}📡{/if}
-					</span>
+					<span class="icon">💨</span>
 					<div>
 						<p class="card-name">{device.name}</p>
 						<p class="card-loc">{device.location}</p>
 					</div>
 				</div>
-
-				{#if device.type === 'air_quality' && reading}
+				{#if reading}
 					<div class="aq-metrics">
 						<div class="aq-item">
 							<span class="aq-val">{reading.pm25?.toFixed(1) ?? '—'}</span>
@@ -152,15 +151,85 @@
 							<span class="badge badge--{vocStatus(reading.voc_index).cls}">{vocStatus(reading.voc_index).label}</span>
 						</div>
 					</div>
-				{:else if device.type === 'sound' && reading}
-					<div class="metric">
-						<span class="metric-value">{reading.laeq?.toFixed(1) ?? '—'}</span>
-						<span class="metric-label">dB LAeq</span>
+				{/if}
+				<div class="card-footer">
+					<span class="badge badge--type">air_quality</span>
+					{#if reading}
+						<span class="battery battery--{batteryClass(reading.battery)}">
+							🔋 {reading.battery !== null ? reading.battery.toFixed(0) + '%' : '—'}
+						</span>
+					{/if}
+				</div>
+			</a>
+		{/each}
+	</div>
+</section>
+{/if}
+
+<!-- Ambiente (7-in-1) -->
+{#if ambientDevices.length > 0}
+<section>
+	<h2 class="section-title">🌡️ Ambiente</h2>
+	<div class="ambient-grid">
+		{#each ambientDevices as device}
+			{@const reading = latestFor(device.dev_eui)}
+			<a href="/devices/{device.dev_eui}" class="card ambient-card">
+				<div class="card-header">
+					<span class="icon">🌡️</span>
+					<div>
+						<p class="card-name">{device.name}</p>
+						<p class="card-loc">{device.location}</p>
+					</div>
+				</div>
+				{#if reading}
+					<div class="aq-metrics">
+						<div class="aq-item">
+							<span class="aq-val">{reading.temperature?.toFixed(1) ?? '—'}</span>
+							<span class="aq-unit">°C Temp</span>
+						</div>
+						<div class="aq-item">
+							<span class="aq-val">{reading.co2?.toFixed(0) ?? '—'}</span>
+							<span class="aq-unit">ppm CO₂</span>
+						</div>
 					</div>
 				{/if}
-
 				<div class="card-footer">
-					<span class="badge badge--type">{device.type}</span>
+					<span class="badge badge--type">ambient</span>
+					{#if reading}
+						<span class="battery battery--{batteryClass(reading.battery)}">
+							🔋 {reading.battery !== null ? reading.battery.toFixed(0) + '%' : '—'}
+						</span>
+					{/if}
+				</div>
+			</a>
+		{/each}
+	</div>
+</section>
+{/if}
+
+<!-- Corriente / Energía -->
+{#if powerDevices.length > 0}
+<section>
+	<h2 class="section-title">⚡ Corriente / Energía</h2>
+	<div class="ambient-grid">
+		{#each powerDevices as device}
+			{@const reading = latestFor(device.dev_eui)}
+			<a href="/devices/{device.dev_eui}" class="card ambient-card">
+				<div class="card-header">
+					<span class="icon">⚡</span>
+					<div>
+						<p class="card-name">{device.name}</p>
+						<p class="card-loc">{device.location}</p>
+					</div>
+				</div>
+				{#if reading}
+					<div class="metric">
+						<span class="metric-value">{reading.total_current?.toFixed(2) ?? '—'}</span>
+						<span class="metric-label">A corriente total</span>
+					</div>
+				{/if}
+				<div class="card-footer">
+					<span class="badge badge--type">power</span>
 					{#if reading}
 						<span class="battery battery--{batteryClass(reading.battery)}">
 							🔋 {reading.battery !== null ? reading.battery.toFixed(0) + '%' : '—'}

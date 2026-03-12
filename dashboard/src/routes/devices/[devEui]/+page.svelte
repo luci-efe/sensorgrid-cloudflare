@@ -1,5 +1,6 @@
 <script lang="ts">
 	import TimeSeriesChart from '$lib/TimeSeriesChart.svelte';
+	import RangeSelector from '$lib/RangeSelector.svelte';
 
 	let { data } = $props();
 
@@ -18,6 +19,8 @@
 		<h1>{data.device.name}</h1>
 		<p class="location">{data.device.location}</p>
 	</div>
+
+	<RangeSelector current={data.range} />
 
 	{#if data.device.type === 'refrigerator'}
 		<div class="door-indicator {isDoorOpen ? 'door-open' : 'door-closed'}">
@@ -68,6 +71,18 @@
 	{#if latest?.current !== null && latest?.current !== undefined}
 		<div class="stat"><p class="stat-val">{latest.current.toFixed(2)} A</p><p class="stat-lbl">Corriente</p></div>
 	{/if}
+	{#if latest?.co2 !== null && latest?.co2 !== undefined}
+		<div class="stat"><p class="stat-val">{latest.co2.toFixed(0)} ppm</p><p class="stat-lbl">CO₂</p></div>
+	{/if}
+	{#if latest?.tvoc !== null && latest?.tvoc !== undefined}
+		<div class="stat"><p class="stat-val">{latest.tvoc}</p><p class="stat-lbl">TVOC</p></div>
+	{/if}
+	{#if latest?.pressure !== null && latest?.pressure !== undefined}
+		<div class="stat"><p class="stat-val">{latest.pressure.toFixed(1)} hPa</p><p class="stat-lbl">Presión</p></div>
+	{/if}
+	{#if latest?.light_level !== null && latest?.light_level !== undefined}
+		<div class="stat"><p class="stat-val">{latest.light_level} lux</p><p class="stat-lbl">Luminosidad</p></div>
+	{/if}
 	{#if latest?.battery !== null && latest?.battery !== undefined}
 		<div class="stat stat--battery">
 			<p class="stat-val">{latest.battery.toFixed(0)}%</p>
@@ -107,6 +122,19 @@
 	{#if data.readings.some((r: typeof data.readings[0]) => r.total_current !== null)}
 		<TimeSeriesChart points={pts('total_current')} label="Corriente Total (A)" unit=" A" color="#ff9800" />
 		<TimeSeriesChart points={pts('current')} label="Corriente (A)" unit=" A" color="#ffcc80" />
+	{/if}
+	{#if data.readings.some((r: typeof data.readings[0]) => r.co2 !== null)}
+		<TimeSeriesChart points={pts('co2')} label="CO₂ (ppm)" unit=" ppm" color="#ef9a9a"
+			referenceLine={{ price: 1000, color: '#ff9800', title: 'Alerta 1000' }} />
+	{/if}
+	{#if data.readings.some((r: typeof data.readings[0]) => r.tvoc !== null)}
+		<TimeSeriesChart points={pts('tvoc')} label="TVOC" unit="" color="#ce93d8" />
+	{/if}
+	{#if data.readings.some((r: typeof data.readings[0]) => r.pressure !== null)}
+		<TimeSeriesChart points={pts('pressure')} label="Presión (hPa)" unit=" hPa" color="#80cbc4" />
+	{/if}
+	{#if data.readings.some((r: typeof data.readings[0]) => r.light_level !== null)}
+		<TimeSeriesChart points={pts('light_level')} label="Luminosidad (lux)" unit=" lux" color="#fff176" />
 	{/if}
 	<TimeSeriesChart points={pts('battery')} label="Batería (%)" unit="%" color="#8ba8cc" />
 </div>

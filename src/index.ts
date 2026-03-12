@@ -31,7 +31,12 @@ export default {
             AVG(current)       AS current,
             AVG(total_current) AS total_current,
             MIN(battery)       AS battery,
-            BOOL_OR(door_open) AS door_open
+            BOOL_OR(door_open) AS door_open,
+            AVG(co2)           AS co2,
+            AVG(tvoc)          AS tvoc,
+            AVG(pressure)      AS pressure,
+            AVG(light_level)   AS light_level,
+            BOOL_OR(pir)       AS pir
           FROM readings
           WHERE time > NOW() - ${interval}::interval
             AND dev_eui = ${devEui}
@@ -45,7 +50,8 @@ export default {
         const rows = await sql`
           SELECT DISTINCT ON (dev_eui)
             time, dev_eui, la, laeq, lamax, temperature, door_open,
-            voc_index, pm25, pm10, humidity, current, total_current, battery
+            voc_index, pm25, pm10, humidity, current, total_current, battery,
+            co2, tvoc, pressure, light_level, pir
           FROM readings
           ORDER BY dev_eui, time DESC
         `;
@@ -91,6 +97,8 @@ export default {
         ? body.uplink_message.last_battery_percentage.value
         : null);
 
+    const pirBool = decoded.pir != null ? decoded.pir === 'trigger' : null;
+
     // Write reading to Neon
     await sql`
       INSERT INTO readings (
@@ -99,7 +107,8 @@ export default {
         temperature, door_open,
         voc_index, pm25, pm10, humidity,
         current, total_current,
-        battery
+        battery,
+        co2, tvoc, pressure, light_level, pir
       )
       VALUES (
         ${receivedAt}, ${devEui},
@@ -107,7 +116,8 @@ export default {
         ${decoded.temperature ?? null}, ${decoded.door_open ?? null},
         ${decoded.voc_index ?? null}, ${decoded.pm25 ?? null}, ${decoded.pm10 ?? null}, ${decoded.humidity ?? null},
         ${decoded.current ?? null}, ${decoded.total_current ?? null},
-        ${battery}
+        ${battery},
+        ${decoded.co2 ?? null}, ${decoded.tvoc ?? null}, ${decoded.pressure ?? null}, ${decoded.light_level ?? null}, ${pirBool}
       )
     `;
 
@@ -167,6 +177,7 @@ interface TTNPayload {
       temperature?: number; door_open?: boolean;
       voc_index?: number; pm25?: number; pm10?: number; humidity?: number;
       current?: number; total_current?: number;
+      co2?: number; tvoc?: number; pressure?: number; light_level?: number; pir?: string;
       freq_weight?: string; temperature_sensor_status?: string;
     };
     last_battery_percentage?: { value: number; f_cnt: number; received_at: string };

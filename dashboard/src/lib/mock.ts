@@ -23,6 +23,11 @@ export type Reading = {
 	total_current: number | null;
 	battery: number | null;
 	door_open: boolean | null;
+	co2: number | null;
+	tvoc: number | null;
+	pressure: number | null;
+	light_level: number | null;
+	pir: boolean | null;
 };
 
 export type LatestReading = Reading & {
@@ -31,13 +36,6 @@ export type LatestReading = Reading & {
 };
 
 export const MOCK_DEVICES: Device[] = [
-	{
-		dev_eui: '24E124743E042952',
-		name: 'Ruido Cocina Principal',
-		location: 'Cocina Central',
-		type: 'sound',
-		created_at: new Date(Date.now() - 7 * 86400000).toISOString()
-	},
 	{
 		dev_eui: 'BB00CC11DD22EE33',
 		name: 'Refrigerador 1 — Lácteos',
@@ -72,6 +70,13 @@ export const MOCK_DEVICES: Device[] = [
 		location: 'Cocina Central',
 		type: 'power',
 		created_at: new Date(Date.now() - 7 * 86400000).toISOString()
+	},
+	{
+		dev_eui: '24E124707E331131',
+		name: 'Sensor 7-en-1 (Par 1)',
+		location: 'Área de Refrigeración',
+		type: 'ambient',
+		created_at: new Date(Date.now() - 7 * 86400000).toISOString()
 	}
 ];
 
@@ -95,23 +100,9 @@ export function generateMockReadings(devEui: string, hours = 24): Reading[] {
 		const arrayIndex = count - i;
 		const noise = (base: number, spread = 5) => base + (Math.random() - 0.5) * spread;
 
-		if (!device || device.type === 'sound') {
-			readings.push({
-				bucket: time,
-				dev_eui: devEui,
-				laeq: noise(62, 10),
-				lamax: noise(75, 8),
-				temperature: null,
-				humidity: null,
-				pm25: null,
-				pm10: null,
-				voc_index: null,
-				current: null,
-				total_current: null,
-				battery: baseBattery - arrayIndex * 0.005,
-				door_open: null
-			});
-		} else if (device.type === 'power') {
+		const nullExtras = { co2: null, tvoc: null, pressure: null, light_level: null, pir: null };
+
+		if (device?.type === 'power') {
 			// Current: baseline 0.8 A total, spikes during cooking hours
 			const date = new Date(time);
 			const hour = date.getHours();
@@ -121,42 +112,33 @@ export function generateMockReadings(devEui: string, hours = 24): Reading[] {
 			readings.push({
 				bucket: time,
 				dev_eui: devEui,
-				laeq: null,
-				lamax: null,
-				temperature: null,
-				humidity: null,
-				pm25: null,
-				pm10: null,
-				voc_index: null,
+				laeq: null, lamax: null,
+				temperature: null, humidity: null,
+				pm25: null, pm10: null, voc_index: null,
 				current: Math.max(0, noise(load * 0.4, 0.1)),
 				total_current: Math.max(0, load),
 				battery: baseBattery - arrayIndex * 0.005,
-				door_open: null
+				door_open: null,
+				...nullExtras
 			});
-		} else if (device.type === 'refrigerator') {
+		} else if (device?.type === 'refrigerator') {
 			// Temperature: realistic cold chain 2–6°C with slow oscillation
 			const tempBase = 3.5 + Math.sin(arrayIndex / 25) * 1.2;
 			const temp = tempBase + (Math.random() - 0.5) * 0.8;
-
-			// Door open: 3 consecutive buckets once per day
 			const doorOpen = arrayIndex >= doorEventStart && arrayIndex < doorEventStart + 3;
-
 			readings.push({
 				bucket: time,
 				dev_eui: devEui,
-				laeq: null,
-				lamax: null,
+				laeq: null, lamax: null,
 				temperature: Math.max(1, Math.min(8, temp)),
 				humidity: 65 + (Math.random() - 0.5) * 14,
-				pm25: null,
-				pm10: null,
-				voc_index: null,
-				current: null,
-				total_current: null,
+				pm25: null, pm10: null, voc_index: null,
+				current: null, total_current: null,
 				battery: baseBattery - arrayIndex * 0.005,
-				door_open: doorOpen
+				door_open: doorOpen,
+				...nullExtras
 			});
-		} else {
+		} else if (device?.type === 'air_quality') {
 			// Air quality: PM spikes during cooking hours
 			const date = new Date(time);
 			const hour = date.getHours();
@@ -164,21 +146,54 @@ export function generateMockReadings(devEui: string, hours = 24): Reading[] {
 				(hour >= 7 && hour < 9) || (hour >= 12 && hour < 14) || (hour >= 18 && hour < 20);
 			const pmMultiplier = isCookingHour ? 3.5 + Math.random() * 1.5 : 1;
 			const vocMultiplier = isCookingHour ? 2.5 + Math.random() * 1.0 : 1;
-
 			readings.push({
 				bucket: time,
 				dev_eui: devEui,
-				laeq: null,
-				lamax: null,
+				laeq: null, lamax: null,
 				temperature: noise(26, 3),
 				humidity: noise(55, 10),
 				pm25: Math.max(2, noise(8, 3) * pmMultiplier),
 				pm10: Math.max(4, noise(15, 5) * pmMultiplier),
 				voc_index: Math.round(Math.max(30, noise(70, 20) * vocMultiplier)),
-				current: null,
-				total_current: null,
+				current: null, total_current: null,
 				battery: baseBattery - arrayIndex * 0.005,
-				door_open: null
+				door_open: null,
+				...nullExtras
+			});
+		} else if (device?.type === 'ambient') {
+			// 7-in-1: temp, humidity, CO2, TVOC, pressure, PIR
+			const date = new Date(time);
+			const hour = date.getHours();
+			const isCookingHour =
+				(hour >= 7 && hour < 9) || (hour >= 12 && hour < 14) || (hour >= 18 && hour < 20);
+			const co2Base = isCookingHour ? noise(1200, 200) : noise(800, 100);
+			readings.push({
+				bucket: time,
+				dev_eui: devEui,
+				laeq: null, lamax: null,
+				temperature: noise(24, 3),
+				humidity: noise(45, 8),
+				pm25: null, pm10: null, voc_index: null,
+				current: null, total_current: null,
+				battery: baseBattery - arrayIndex * 0.005,
+				door_open: null,
+				co2: Math.max(400, co2Base),
+				tvoc: Math.round(Math.max(0, noise(50, 20))),
+				pressure: noise(850, 5),
+				light_level: Math.round(Math.max(0, noise(200, 100))),
+				pir: Math.random() < 0.1
+			});
+		} else {
+			readings.push({
+				bucket: time,
+				dev_eui: devEui,
+				laeq: noise(62, 10), lamax: noise(75, 8),
+				temperature: null, humidity: null,
+				pm25: null, pm10: null, voc_index: null,
+				current: null, total_current: null,
+				battery: baseBattery - arrayIndex * 0.005,
+				door_open: null,
+				...nullExtras
 			});
 		}
 	}

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import TimeSeriesChart from '$lib/TimeSeriesChart.svelte';
+	import RangeSelector from '$lib/RangeSelector.svelte';
 	import type { Reading } from '$lib/mock';
 
 	let { data } = $props();
@@ -43,7 +44,8 @@
 
 <div class="page-header">
 	<h1>Calidad del Aire</h1>
-	<span class="subtitle">{data.device.name} · {data.device.location} · Últimas 24h</span>
+	<span class="subtitle">{data.device.name} · {data.device.location}</span>
+	<RangeSelector current={data.range} />
 </div>
 
 <!-- Metric cards -->
