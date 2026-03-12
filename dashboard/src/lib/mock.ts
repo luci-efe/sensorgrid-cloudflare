@@ -5,7 +5,7 @@ export type Device = {
 	dev_eui: string;
 	name: string;
 	location: string;
-	type: 'sound' | 'refrigerator' | 'air_quality' | 'ambient';
+	type: 'sound' | 'refrigerator' | 'air_quality' | 'ambient' | 'power';
 	created_at: string;
 };
 
@@ -19,6 +19,8 @@ export type Reading = {
 	pm25: number | null;
 	pm10: number | null;
 	voc_index: number | null;
+	current: number | null;
+	total_current: number | null;
 	battery: number | null;
 	door_open: boolean | null;
 };
@@ -63,6 +65,13 @@ export const MOCK_DEVICES: Device[] = [
 		location: 'Área de Cocción',
 		type: 'air_quality',
 		created_at: new Date(Date.now() - 7 * 86400000).toISOString()
+	},
+	{
+		dev_eui: '24E124746F133707',
+		name: 'Sensor de Corriente 1',
+		location: 'Cocina Central',
+		type: 'power',
+		created_at: new Date(Date.now() - 7 * 86400000).toISOString()
 	}
 ];
 
@@ -97,6 +106,30 @@ export function generateMockReadings(devEui: string, hours = 24): Reading[] {
 				pm25: null,
 				pm10: null,
 				voc_index: null,
+				current: null,
+				total_current: null,
+				battery: baseBattery - arrayIndex * 0.005,
+				door_open: null
+			});
+		} else if (device.type === 'power') {
+			// Current: baseline 0.8 A total, spikes during cooking hours
+			const date = new Date(time);
+			const hour = date.getHours();
+			const isCookingHour =
+				(hour >= 7 && hour < 9) || (hour >= 12 && hour < 14) || (hour >= 18 && hour < 20);
+			const load = isCookingHour ? noise(4.5, 1.5) : noise(0.8, 0.3);
+			readings.push({
+				bucket: time,
+				dev_eui: devEui,
+				laeq: null,
+				lamax: null,
+				temperature: null,
+				humidity: null,
+				pm25: null,
+				pm10: null,
+				voc_index: null,
+				current: Math.max(0, noise(load * 0.4, 0.1)),
+				total_current: Math.max(0, load),
 				battery: baseBattery - arrayIndex * 0.005,
 				door_open: null
 			});
@@ -118,6 +151,8 @@ export function generateMockReadings(devEui: string, hours = 24): Reading[] {
 				pm25: null,
 				pm10: null,
 				voc_index: null,
+				current: null,
+				total_current: null,
 				battery: baseBattery - arrayIndex * 0.005,
 				door_open: doorOpen
 			});
@@ -140,6 +175,8 @@ export function generateMockReadings(devEui: string, hours = 24): Reading[] {
 				pm25: Math.max(2, noise(8, 3) * pmMultiplier),
 				pm10: Math.max(4, noise(15, 5) * pmMultiplier),
 				voc_index: Math.round(Math.max(30, noise(70, 20) * vocMultiplier)),
+				current: null,
+				total_current: null,
 				battery: baseBattery - arrayIndex * 0.005,
 				door_open: null
 			});

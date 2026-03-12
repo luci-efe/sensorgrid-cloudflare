@@ -62,6 +62,12 @@
 	{#if latest?.voc_index !== null && latest?.voc_index !== undefined}
 		<div class="stat"><p class="stat-val">{latest.voc_index.toFixed(0)}</p><p class="stat-lbl">VOC Index</p></div>
 	{/if}
+	{#if latest?.total_current !== null && latest?.total_current !== undefined}
+		<div class="stat"><p class="stat-val">{latest.total_current.toFixed(2)} A</p><p class="stat-lbl">Corriente Total</p></div>
+	{/if}
+	{#if latest?.current !== null && latest?.current !== undefined}
+		<div class="stat"><p class="stat-val">{latest.current.toFixed(2)} A</p><p class="stat-lbl">Corriente</p></div>
+	{/if}
 	{#if latest?.battery !== null && latest?.battery !== undefined}
 		<div class="stat stat--battery">
 			<p class="stat-val">{latest.battery.toFixed(0)}%</p>
@@ -97,6 +103,10 @@
 	{#if data.readings.some((r: typeof data.readings[0]) => r.voc_index !== null)}
 		<TimeSeriesChart points={pts('voc_index')} label="VOC Index" color="#ab47bc"
 			referenceLine={{ price: 150, color: '#ff9800', title: 'Elevado' }} />
+	{/if}
+	{#if data.readings.some((r: typeof data.readings[0]) => r.total_current !== null)}
+		<TimeSeriesChart points={pts('total_current')} label="Corriente Total (A)" unit=" A" color="#ff9800" />
+		<TimeSeriesChart points={pts('current')} label="Corriente (A)" unit=" A" color="#ffcc80" />
 	{/if}
 	<TimeSeriesChart points={pts('battery')} label="Batería (%)" unit="%" color="#8ba8cc" />
 </div>

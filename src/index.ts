@@ -21,14 +21,16 @@ export default {
           SELECT
             time_bucket(${bucket}::interval, time) AS bucket,
             dev_eui,
-            AVG(laeq)        AS laeq,
-            MAX(lamax)       AS lamax,
-            AVG(temperature) AS temperature,
-            AVG(humidity)    AS humidity,
-            AVG(pm25)        AS pm25,
-            AVG(pm10)        AS pm10,
-            AVG(voc_index)   AS voc_index,
-            MIN(battery)     AS battery,
+            AVG(laeq)          AS laeq,
+            MAX(lamax)         AS lamax,
+            AVG(temperature)   AS temperature,
+            AVG(humidity)      AS humidity,
+            AVG(pm25)          AS pm25,
+            AVG(pm10)          AS pm10,
+            AVG(voc_index)     AS voc_index,
+            AVG(current)       AS current,
+            AVG(total_current) AS total_current,
+            MIN(battery)       AS battery,
             BOOL_OR(door_open) AS door_open
           FROM readings
           WHERE time > NOW() - ${interval}::interval
@@ -43,7 +45,7 @@ export default {
         const rows = await sql`
           SELECT DISTINCT ON (dev_eui)
             time, dev_eui, la, laeq, lamax, temperature, door_open,
-            voc_index, pm25, pm10, humidity, battery
+            voc_index, pm25, pm10, humidity, current, total_current, battery
           FROM readings
           ORDER BY dev_eui, time DESC
         `;
@@ -69,7 +71,7 @@ export default {
     }
 
     const authHeader = request.headers.get('Authorization');
-    if (authHeader !== `Bearer ${env.TTN_WEBHOOK_SECRET}`) {
+    if (authHeader?.trim() !== `Bearer ${env.TTN_WEBHOOK_SECRET?.trim()}`) {
       return new Response('Unauthorized', { status: 401 });
     }
 
@@ -82,16 +84,30 @@ export default {
       return new Response('Missing payload fields', { status: 400 });
     }
 
+    // Battery may live in decoded_payload OR in last_battery_percentage (e.g. CT101)
+    const battery =
+      decoded.battery ??
+      (body.uplink_message?.last_battery_percentage?.value != null
+        ? body.uplink_message.last_battery_percentage.value
+        : null);
+
     // Write reading to Neon
     await sql`
-      INSERT INTO readings (time, dev_eui, la, laeq, lamax, battery)
+      INSERT INTO readings (
+        time, dev_eui,
+        la, laeq, lamax,
+        temperature, door_open,
+        voc_index, pm25, pm10, humidity,
+        current, total_current,
+        battery
+      )
       VALUES (
-        ${receivedAt},
-        ${devEui},
-        ${decoded.la ?? null},
-        ${decoded.laeq ?? null},
-        ${decoded.lamax ?? null},
-        ${decoded.battery ?? null}
+        ${receivedAt}, ${devEui},
+        ${decoded.la ?? null}, ${decoded.laeq ?? null}, ${decoded.lamax ?? null},
+        ${decoded.temperature ?? null}, ${decoded.door_open ?? null},
+        ${decoded.voc_index ?? null}, ${decoded.pm25 ?? null}, ${decoded.pm10 ?? null}, ${decoded.humidity ?? null},
+        ${decoded.current ?? null}, ${decoded.total_current ?? null},
+        ${battery}
       )
     `;
 
@@ -150,8 +166,10 @@ interface TTNPayload {
       la?: number; laeq?: number; lamax?: number; battery?: number;
       temperature?: number; door_open?: boolean;
       voc_index?: number; pm25?: number; pm10?: number; humidity?: number;
-      freq_weight?: string;
+      current?: number; total_current?: number;
+      freq_weight?: string; temperature_sensor_status?: string;
     };
+    last_battery_percentage?: { value: number; f_cnt: number; received_at: string };
     received_at: string;
   };
 }
