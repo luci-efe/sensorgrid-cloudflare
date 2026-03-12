@@ -364,8 +364,8 @@ export default function Resumen() {
         const entries = [...map.entries()]
         const readings = await Promise.all(entries.map(([, { am307, ct101 }]) =>
           Promise.all([
-            am307 ? fetchReadings(am307.dev_eui, interval, bucket) : Promise.resolve([]),
-            ct101 ? fetchReadings(ct101.dev_eui, interval, bucket) : Promise.resolve([]),
+            am307 ? fetchReadings(am307.dev_eui, interval, bucket).catch(() => []) : Promise.resolve([]),
+            ct101 ? fetchReadings(ct101.dev_eui, interval, bucket).catch(() => []) : Promise.resolve([]),
           ])
         ))
         if (cancelled) return
