@@ -30,10 +30,10 @@ export default function App() {
           ].map(({ to, label, end }) => (
             <NavLink key={to} to={to} end={end}
               className={({ isActive }) =>
-                `px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                `px-3 py-1.5 rounded-md text-sm font-medium ${
                   isActive
                     ? 'text-white bg-blue-600/20 border border-blue-500/30'
-                    : 'text-[var(--muted)] hover:text-[var(--text)]'
+                    : 'text-[var(--muted)]'
                 }`
               }>
               {label}

@@ -125,7 +125,7 @@ function MetricTile({
 
   return (
     <div
-      className="rounded-xl border p-4 flex flex-col gap-2 transition-colors hover:border-blue-500/50"
+      className="rounded-xl border p-4 flex flex-col gap-2"
       style={{ background: 'var(--surface)', borderColor: 'var(--border)', borderLeft: `3px solid ${color}` }}
     >
       {/* Tile header */}
@@ -140,7 +140,7 @@ function MetricTile({
       </div>
 
       {/* Chart */}
-      <div className="h-28">
+      <div className="h-44">
         {hasData ? (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data} margin={{ top: 4, right: 6, bottom: 0, left: -4 }}>
@@ -231,7 +231,7 @@ function MetricTile({
 // ── Door tile ──────────────────────────────────────────────────────────────
 function DoorTile({ open, opens }: { open: boolean; opens: number }) {
   return (
-    <div className="rounded-xl border p-4 flex flex-col gap-3 transition-colors"
+    <div className="rounded-xl border p-4 flex flex-col gap-3"
       style={{
         background: open ? '#1a0808' : 'var(--surface)',
         borderColor: open ? 'var(--danger)' : 'var(--border)',
@@ -248,7 +248,7 @@ function DoorTile({ open, opens }: { open: boolean; opens: number }) {
 
       <div className="flex-1 flex items-center">
         {open ? (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold animate-pulse"
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold"
             style={{ background: '#3b0a0a', color: 'var(--danger)' }}>
             🚨 ABIERTA
           </span>
@@ -397,7 +397,7 @@ export default function Resumen() {
             { v: '30d', l: '30 días' },
           ] as const).map(({ v, l }) => (
             <button key={v} onClick={() => setRange(v)}
-              className="px-3 py-1 rounded-md text-sm font-medium transition-all"
+              className="px-3 py-1 rounded-md text-sm font-medium"
               style={range === v
                 ? { background: '#1d4ed8', color: '#fff' }
                 : { color: 'var(--muted)' }}>
@@ -410,6 +410,21 @@ export default function Resumen() {
 
       {groups.length === 0 && !loading && (
         <p style={{ color: 'var(--muted)' }}>No hay refrigeradores configurados aún.</p>
+      )}
+
+      {groups.length === 0 && loading && (
+        <div className="space-y-10">
+          {[0, 1].map(i => (
+            <div key={i}>
+              <div className="h-5 w-48 rounded mb-4" style={{ background: 'var(--border)' }} />
+              <div className="grid grid-cols-3 gap-3">
+                {[0, 1, 2, 3, 4, 5].map(j => (
+                  <div key={j} className="rounded-xl border p-4 h-56" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       {groups.map(g => (
