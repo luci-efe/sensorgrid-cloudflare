@@ -1,5 +1,8 @@
-import { useState, useEffect } from 'react'
-import { AreaChart, Area, ResponsiveContainer, Tooltip, YAxis } from 'recharts'
+import { useState, useEffect, useId } from 'react'
+import {
+  AreaChart, Area, XAxis, YAxis,
+  ResponsiveContainer, Tooltip, CartesianGrid,
+} from 'recharts'
 import { Thermometer, Droplets, Zap, Wind, FlaskConical, DoorOpen, DoorClosed, RefreshCw } from 'lucide-react'
 import { fetchDevices, fetchLatest, fetchReadings } from '../lib/api'
 import type { Device, LatestReading, Reading } from '../lib/mock'
@@ -12,6 +15,8 @@ type FridgeGroup = {
   am307Readings: Reading[]
   ct101Readings: Reading[]
 }
+
+type ChartPoint = { v: number | null; t: number }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function rangeToParams(range: string) {
@@ -65,58 +70,140 @@ function countDoorOpens(readings: Reading[]): number {
   return opens
 }
 
-function toChartData(readings: Reading[], key: keyof Reading) {
-  return readings.map(r => ({ v: r[key] as number | null }))
+function toChartData(readings: Reading[], key: keyof Reading): ChartPoint[] {
+  return readings.map(r => ({
+    v: r[key] as number | null,
+    t: new Date(r.bucket).getTime(),
+  }))
 }
 
-// ── Sparkline tile ─────────────────────────────────────────────────────────
+/** Format an X-axis timestamp depending on the active range. */
+function fmtXTick(t: number, range: string): string {
+  const d = new Date(t)
+  if (range === 'hoy') {
+    return d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false })
+  }
+  if (range === '7d') {
+    return d.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric' })
+  }
+  return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })
+}
+
+/** Format tooltip label (full date + time). */
+function fmtTooltipTime(t: number, range: string): string {
+  const d = new Date(t)
+  if (range === 'hoy') {
+    return d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false })
+  }
+  return d.toLocaleDateString('es-MX', {
+    weekday: 'short', day: 'numeric', month: 'short',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  })
+}
+
+// ── Metric tile ─────────────────────────────────────────────────────────────
 function MetricTile({
-  label,
-  icon,
-  value,
-  unit,
-  color,
-  data,
-  subtitle,
+  label, icon, value, unit, color, data, range, decimals = 1, subtitle,
 }: {
   label: string
   icon: React.ReactNode
   value: string
   unit?: string
   color: string
-  data: { v: number | null }[]
+  data: ChartPoint[]
+  range: string
+  decimals?: number
   subtitle?: string
 }) {
+  // Stable, unique gradient ID per tile instance (React 18 useId)
+  const uid = useId().replace(/:/g, '')
+  const gradId = `grad-${uid}`
+
   const hasData = data.some(d => d.v !== null)
+
+  const tickStyle = { fontSize: 10, fill: '#6b8ab0' }
+
   return (
-    <div className="rounded-xl border p-4 flex flex-col gap-2 transition-colors hover:border-blue-500/50"
-      style={{ background: 'var(--surface)', borderColor: 'var(--border)', borderLeft: `3px solid ${color}` }}>
-      {/* Header */}
+    <div
+      className="rounded-xl border p-4 flex flex-col gap-2 transition-colors hover:border-blue-500/50"
+      style={{ background: 'var(--surface)', borderColor: 'var(--border)', borderLeft: `3px solid ${color}` }}
+    >
+      {/* Tile header */}
       <div className="flex items-center gap-1.5">
         <span style={{ color }}>{icon}</span>
         <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--muted)' }}>
           {label}
         </span>
+        {unit && (
+          <span className="ml-auto text-xs" style={{ color: 'var(--muted)' }}>{unit}</span>
+        )}
       </div>
 
       {/* Chart */}
-      <div className="h-14">
+      <div className="h-28">
         {hasData ? (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+            <AreaChart data={data} margin={{ top: 4, right: 6, bottom: 0, left: -4 }}>
               <defs>
-                <linearGradient id={`g-${label}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={color} stopOpacity={0.25} />
+                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%"  stopColor={color} stopOpacity={0.3} />
                   <stop offset="95%" stopColor={color} stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <Area type="monotone" dataKey="v" stroke={color} strokeWidth={1.5}
-                fill={`url(#g-${label})`} dot={false} connectNulls />
-              <YAxis domain={['auto', 'auto']} hide />
+
+              <CartesianGrid strokeDasharray="3 3" stroke="#1a3a5c" vertical={false} />
+
+              <XAxis
+                dataKey="t"
+                type="number"
+                domain={['dataMin', 'dataMax']}
+                tickCount={5}
+                tickFormatter={t => fmtXTick(t as number, range)}
+                tick={tickStyle}
+                tickLine={false}
+                axisLine={false}
+                scale="time"
+              />
+
+              <YAxis
+                domain={['auto', 'auto']}
+                tickCount={4}
+                tick={tickStyle}
+                tickLine={false}
+                axisLine={false}
+                width={38}
+                tickFormatter={v =>
+                  typeof v === 'number'
+                    ? (Number.isInteger(v) ? String(v) : v.toFixed(decimals))
+                    : String(v)
+                }
+              />
+
+              <Area
+                type="monotone"
+                dataKey="v"
+                stroke={color}
+                strokeWidth={2}
+                fill={`url(#${gradId})`}
+                dot={false}
+                connectNulls
+                activeDot={{ r: 3, fill: color, stroke: 'var(--surface)', strokeWidth: 2 }}
+              />
+
               <Tooltip
-                contentStyle={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 11 }}
-                formatter={(v: number) => [v?.toFixed(1), label]}
-                labelFormatter={() => ''}
+                contentStyle={{
+                  background: '#0c1a2e',
+                  border: '1px solid #1a3a5c',
+                  borderRadius: 8,
+                  fontSize: 12,
+                  padding: '6px 10px',
+                }}
+                cursor={{ stroke: color, strokeWidth: 1, strokeDasharray: '4 2' }}
+                formatter={(v: unknown) => [
+                  `${(v as number)?.toFixed(decimals)}${unit ? ` ${unit}` : ''}`,
+                  label,
+                ]}
+                labelFormatter={t => fmtTooltipTime(t as number, range)}
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -127,13 +214,15 @@ function MetricTile({
         )}
       </div>
 
-      {/* Value */}
-      <div className="flex items-baseline gap-1">
-        <span className="text-lg font-bold" style={{ color }}>
+      {/* Current value */}
+      <div className="flex items-baseline gap-1 pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
+        <span className="text-xl font-bold tabular-nums" style={{ color }}>
           {value}
         </span>
         {unit && <span className="text-xs" style={{ color: 'var(--muted)' }}>{unit}</span>}
+        <span className="ml-auto text-xs" style={{ color: 'var(--muted)' }}>actual</span>
       </div>
+
       {subtitle && <p className="text-xs" style={{ color: 'var(--muted)' }}>{subtitle}</p>}
     </div>
   )
@@ -172,7 +261,7 @@ function DoorTile({ open, opens }: { open: boolean; opens: number }) {
       </div>
 
       <div className="flex items-baseline gap-2 border-t pt-2" style={{ borderColor: 'var(--border)' }}>
-        <span className="text-2xl font-bold" style={{ color: 'var(--text)' }}>{opens}</span>
+        <span className="text-2xl font-bold tabular-nums" style={{ color: 'var(--text)' }}>{opens}</span>
         <span className="text-xs" style={{ color: 'var(--muted)' }}>apertura{opens !== 1 ? 's' : ''} hoy</span>
       </div>
     </div>
@@ -180,7 +269,7 @@ function DoorTile({ open, opens }: { open: boolean; opens: number }) {
 }
 
 // ── Fridge section ─────────────────────────────────────────────────────────
-function FridgeSection({ group, latest }: { group: FridgeGroup; latest: LatestReading[] }) {
+function FridgeSection({ group, latest, range }: { group: FridgeGroup; latest: LatestReading[]; range: string }) {
   const amL = latest.find(r => r.dev_eui === group.am307?.dev_eui)
   const ctL = latest.find(r => r.dev_eui === group.ct101?.dev_eui)
   const hasData = !!(amL || ctL)
@@ -189,14 +278,13 @@ function FridgeSection({ group, latest }: { group: FridgeGroup; latest: LatestRe
   const lastTime = amL?.time ?? ctL?.time
 
   return (
-    <section className="mb-8">
+    <section className="mb-10">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-base font-semibold flex items-center gap-2" style={{ color: 'var(--text)' }}>
           🧊 {group.label}
         </h2>
         {lastTime && (
-          <span className={`text-xs ${isStale(lastTime) ? 'text-yellow-500' : ''}`}
-            style={!isStale(lastTime) ? { color: 'var(--muted)' } : {}}>
+          <span className="text-xs" style={{ color: isStale(lastTime) ? 'var(--warning)' : 'var(--muted)' }}>
             {isStale(lastTime) ? '⚠ ' : ''}Actualizado {timeAgo(lastTime)}
           </span>
         )}
@@ -209,38 +297,38 @@ function FridgeSection({ group, latest }: { group: FridgeGroup; latest: LatestRe
           <p className="text-sm" style={{ color: 'var(--muted)' }}>Sin datos disponibles</p>
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-3 gap-3">
           <MetricTile
             label="Temperatura" icon={<Thermometer size={14} />}
             value={amL?.temperature?.toFixed(1) ?? '—'} unit="°C"
-            color={tempColor(amL?.temperature)}
+            color={tempColor(amL?.temperature)} range={range} decimals={1}
             data={toChartData(group.am307Readings, 'temperature')}
           />
           <MetricTile
             label="Humedad" icon={<Droplets size={14} />}
             value={amL?.humidity?.toFixed(0) ?? '—'} unit="%"
-            color="#8b5cf6"
+            color="#8b5cf6" range={range} decimals={0}
             data={toChartData(group.am307Readings, 'humidity')}
           />
           <DoorTile open={doorOpen} opens={opens} />
           <MetricTile
             label="CO₂" icon={<Wind size={14} />}
             value={amL?.co2?.toFixed(0) ?? '—'} unit="ppm"
-            color={co2Color(amL?.co2)}
+            color={co2Color(amL?.co2)} range={range} decimals={0}
             data={toChartData(group.am307Readings, 'co2')}
           />
           <MetricTile
             label="TVOC" icon={<FlaskConical size={14} />}
             value={String(amL?.tvoc ?? '—')} unit="ppb"
-            color={tvocColor(amL?.tvoc)}
+            color={tvocColor(amL?.tvoc)} range={range} decimals={0}
             data={toChartData(group.am307Readings, 'tvoc')}
           />
           <MetricTile
             label="Energía" icon={<Zap size={14} />}
             value={ctL?.total_current?.toFixed(2) ?? '—'} unit="A"
-            color="#f59e0b"
+            color="#f59e0b" range={range} decimals={2}
             data={toChartData(group.ct101Readings, 'total_current')}
-            subtitle={ctL ? undefined : 'Sin sensor de corriente'}
+            subtitle={!group.ct101 ? 'Sin sensor de corriente' : undefined}
           />
         </div>
       )}
@@ -248,7 +336,7 @@ function FridgeSection({ group, latest }: { group: FridgeGroup; latest: LatestRe
   )
 }
 
-// ── Main Resumen page ──────────────────────────────────────────────────────
+// ── Main page ───────────────────────────────────────────────────────────────
 export default function Resumen() {
   const [range, setRange] = useState('hoy')
   const [groups, setGroups] = useState<FridgeGroup[]>([])
@@ -256,14 +344,15 @@ export default function Resumen() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    let cancelled = false
     async function load() {
       setLoading(true)
       try {
         const { interval, bucket } = rangeToParams(range)
         const [devices, lat] = await Promise.all([fetchDevices(), fetchLatest()])
+        if (cancelled) return
         setLatest(lat)
 
-        // Group by fridge_label
         const map = new Map<string, { am307: Device | null; ct101: Device | null }>()
         for (const d of devices) {
           if (!d.fridge_label) continue
@@ -280,6 +369,7 @@ export default function Resumen() {
             ct101 ? fetchReadings(ct101.dev_eui, interval, bucket) : Promise.resolve([]),
           ])
         ))
+        if (cancelled) return
 
         setGroups(entries.map(([label, { am307, ct101 }], i) => ({
           label, am307, ct101,
@@ -287,10 +377,11 @@ export default function Resumen() {
           ct101Readings: readings[i][1],
         })))
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
     load()
+    return () => { cancelled = true }
   }, [range])
 
   return (
@@ -300,15 +391,13 @@ export default function Resumen() {
         <h1 className="text-xl font-bold" style={{ color: 'var(--text)' }}>Resumen</h1>
         <div className="flex items-center gap-1 rounded-lg p-1"
           style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-          {[
+          {([
             { v: 'hoy', l: 'Hoy' },
             { v: '7d',  l: '7 días' },
             { v: '30d', l: '30 días' },
-          ].map(({ v, l }) => (
+          ] as const).map(({ v, l }) => (
             <button key={v} onClick={() => setRange(v)}
-              className={`px-3 py-1 rounded-md text-sm font-medium transition-all ${
-                range === v ? 'text-white' : 'hover:text-white'
-              }`}
+              className="px-3 py-1 rounded-md text-sm font-medium transition-all"
               style={range === v
                 ? { background: '#1d4ed8', color: '#fff' }
                 : { color: 'var(--muted)' }}>
@@ -324,7 +413,7 @@ export default function Resumen() {
       )}
 
       {groups.map(g => (
-        <FridgeSection key={g.label} group={g} latest={latest} />
+        <FridgeSection key={g.label} group={g} latest={latest} range={range} />
       ))}
     </div>
   )
