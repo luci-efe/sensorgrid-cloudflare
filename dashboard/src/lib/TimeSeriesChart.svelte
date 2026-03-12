@@ -1,14 +1,30 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
+	import {
+		createChart,
+		LineStyle,
+		type IChartApi,
+		type ISeriesApi,
+		type UTCTimestamp
+	} from 'lightweight-charts';
 
 	type Point = { bucket: string; value: number | null };
+	type ReferenceLine = { price: number; color: string; title: string };
 
-	let { points = [], label = '', color = '#4fc3f7', unit = '' }: {
+	let {
+		points = [],
+		label = '',
+		color = '#4fc3f7',
+		unit = '',
+		referenceLine = null,
+		height = 220
+	}: {
 		points?: Point[];
 		label?: string;
 		color?: string;
 		unit?: string;
+		referenceLine?: ReferenceLine | null;
+		height?: number;
 	} = $props();
 
 	let container: HTMLDivElement;
@@ -26,11 +42,11 @@
 
 	onMount(() => {
 		chart = createChart(container, {
-			height: 220,
-			layout: { background: { color: '#111827' }, textColor: '#9ca3af' },
+			height,
+			layout: { background: { color: '#0a1628' }, textColor: '#8ba8cc' },
 			grid: {
-				vertLines: { color: '#1f2937' },
-				horzLines: { color: '#1f2937' }
+				vertLines: { color: '#1a3a6b' },
+				horzLines: { color: '#1a3a6b' }
 			},
 			timeScale: { timeVisible: true, secondsVisible: false },
 			crosshair: { mode: 1 }
@@ -44,6 +60,18 @@
 		});
 
 		series.setData(toChartData(points));
+
+		if (referenceLine) {
+			series.createPriceLine({
+				price: referenceLine.price,
+				color: referenceLine.color,
+				lineWidth: 1,
+				lineStyle: LineStyle.Dashed,
+				axisLabelVisible: true,
+				title: referenceLine.title
+			});
+		}
+
 		chart.timeScale().fitContent();
 
 		const ro = new ResizeObserver(() => chart.applyOptions({ width: container.clientWidth }));
@@ -65,13 +93,14 @@
 
 <style>
 	.chart-wrapper {
-		background: #111827;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
 		border-radius: 0.5rem;
 		padding: 0.75rem;
 	}
 	.label {
 		font-size: 0.75rem;
-		color: #6b7280;
+		color: #8ba8cc;
 		margin: 0 0 0.5rem;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;

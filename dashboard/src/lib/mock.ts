@@ -37,8 +37,22 @@ export const MOCK_DEVICES: Device[] = [
 		created_at: new Date(Date.now() - 7 * 86400000).toISOString()
 	},
 	{
-		dev_eui: 'AA11BB22CC33DD44',
-		name: 'Refrigerador 1',
+		dev_eui: 'BB00CC11DD22EE33',
+		name: 'Refrigerador 1 — Lácteos',
+		location: 'Área de Refrigeración',
+		type: 'refrigerator',
+		created_at: new Date(Date.now() - 7 * 86400000).toISOString()
+	},
+	{
+		dev_eui: 'CC11DD22EE33FF44',
+		name: 'Refrigerador 2 — Carnes',
+		location: 'Área de Refrigeración',
+		type: 'refrigerator',
+		created_at: new Date(Date.now() - 7 * 86400000).toISOString()
+	},
+	{
+		dev_eui: 'DD22EE33FF445566',
+		name: 'Refrigerador 3 — Verduras',
 		location: 'Área de Refrigeración',
 		type: 'refrigerator',
 		created_at: new Date(Date.now() - 7 * 86400000).toISOString()
@@ -57,53 +71,76 @@ export function generateMockReadings(devEui: string, hours = 24): Reading[] {
 	const device = MOCK_DEVICES.find((d) => d.dev_eui === devEui);
 	const now = Date.now();
 	const bucketMs = 5 * 60 * 1000;
-	const count = (hours * 60) / 5;
+	const count = Math.round((hours * 60) / 5);
 	const readings: Reading[] = [];
+
+	// For refrigerators: pick a random door-open event (3 consecutive buckets once per simulation)
+	const doorEventStart = Math.floor(Math.random() * Math.max(count - 10, 1));
+
+	// Base battery varies by device for realism
+	const baseBattery =
+		devEui === 'BB00CC11DD22EE33' ? 90 : devEui === 'CC11DD22EE33FF44' ? 85 : devEui === 'DD22EE33FF445566' ? 88 : 85;
 
 	for (let i = count; i >= 0; i--) {
 		const time = new Date(now - i * bucketMs).toISOString();
-		const noise = (base: number) => base + (Math.random() - 0.5) * 10;
+		const arrayIndex = count - i;
+		const noise = (base: number, spread = 5) => base + (Math.random() - 0.5) * spread;
 
 		if (!device || device.type === 'sound') {
 			readings.push({
 				bucket: time,
 				dev_eui: devEui,
-				laeq: noise(62),
-				lamax: noise(75),
+				laeq: noise(62, 10),
+				lamax: noise(75, 8),
 				temperature: null,
 				humidity: null,
 				pm25: null,
 				pm10: null,
 				voc_index: null,
-				battery: 85 - i * 0.005,
+				battery: baseBattery - arrayIndex * 0.005,
 				door_open: null
 			});
 		} else if (device.type === 'refrigerator') {
+			// Temperature: realistic cold chain 2–6°C with slow oscillation
+			const tempBase = 3.5 + Math.sin(arrayIndex / 25) * 1.2;
+			const temp = tempBase + (Math.random() - 0.5) * 0.8;
+
+			// Door open: 3 consecutive buckets once per day
+			const doorOpen = arrayIndex >= doorEventStart && arrayIndex < doorEventStart + 3;
+
 			readings.push({
 				bucket: time,
 				dev_eui: devEui,
 				laeq: null,
 				lamax: null,
-				temperature: noise(4),
-				humidity: null,
+				temperature: Math.max(1, Math.min(8, temp)),
+				humidity: 65 + (Math.random() - 0.5) * 14,
 				pm25: null,
 				pm10: null,
 				voc_index: null,
-				battery: 90 - i * 0.005,
-				door_open: Math.random() < 0.02 // 2% chance of door open per bucket
+				battery: baseBattery - arrayIndex * 0.005,
+				door_open: doorOpen
 			});
 		} else {
+			// Air quality: PM spikes during cooking hours
+			const date = new Date(time);
+			const hour = date.getHours();
+			const isCookingHour =
+				(hour >= 7 && hour < 9) || (hour >= 12 && hour < 14) || (hour >= 18 && hour < 20);
+			const pmMultiplier = isCookingHour ? 3.5 + Math.random() * 1.5 : 1;
+			const vocMultiplier = isCookingHour ? 2.5 + Math.random() * 1.0 : 1;
+
 			readings.push({
 				bucket: time,
 				dev_eui: devEui,
 				laeq: null,
 				lamax: null,
-				temperature: noise(26),
-				humidity: noise(55),
-				pm25: noise(12),
-				pm10: noise(22),
-				voc_index: Math.round(noise(80)),
-				battery: 78 - i * 0.005,
+				temperature: noise(26, 3),
+				humidity: noise(55, 10),
+				pm25: Math.max(2, noise(8, 3) * pmMultiplier),
+				pm10: Math.max(4, noise(15, 5) * pmMultiplier),
+				voc_index: Math.round(Math.max(30, noise(70, 20) * vocMultiplier)),
+				battery: baseBattery - arrayIndex * 0.005,
 				door_open: null
 			});
 		}
