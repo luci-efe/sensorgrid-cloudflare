@@ -68,8 +68,8 @@ async function handleAuthProxy(request: Request, env: Env): Promise<Response> {
   const authPath = url.pathname.slice('/auth'.length);
   const targetUrl = `${neonAuthBase}${authPath}${url.search}`;
 
-  // Build proxy headers — forward everything except hop-by-hop and origin-related headers
-  const skipHeaders = new Set(['host', 'origin', 'referer', 'cf-connecting-ip',
+  // Build proxy headers — forward everything except hop-by-hop headers
+  const skipHeaders = new Set(['host', 'referer', 'cf-connecting-ip',
     'cf-ipcountry', 'cf-ray', 'cf-visitor', 'x-forwarded-for', 'x-forwarded-proto',
     'x-real-ip', 'sec-fetch-dest', 'sec-fetch-mode', 'sec-fetch-site', 'sec-ch-ua',
     'sec-ch-ua-mobile', 'sec-ch-ua-platform']);
@@ -78,6 +78,8 @@ async function handleAuthProxy(request: Request, env: Env): Promise<Response> {
   for (const [k, v] of request.headers.entries()) {
     if (!skipHeaders.has(k.toLowerCase())) proxyReqHeaders.set(k, v);
   }
+  // Override Origin with our trusted domain so Neon Auth accepts the request
+  proxyReqHeaders.set('Origin', env.DASHBOARD_ORIGIN ?? 'https://sensorgrid.site');
 
   const proxyRes = await fetch(targetUrl, {
     method: request.method,
