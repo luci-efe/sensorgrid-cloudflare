@@ -1,0 +1,6 @@
+# Never cache index.html so users always get the latest JS bundle reference
+/
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
