@@ -26,13 +26,17 @@ interface TTNPayload {
   };
 }
 
+type AuthUser =
+  | { status: 'ok'; userId: string; role: string; name: string; email: string }
+  | { status: 'pending' | 'rejected' };
+
 // ── CORS headers ───────────────────────────────────────────────────────────
 
 function corsHeaders(env: Env): Record<string, string> {
   return {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': env.DASHBOARD_ORIGIN ?? '*',
-    'Access-Control-Allow-Methods': 'GET, PATCH, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   };
 }
@@ -42,7 +46,7 @@ function corsHeaders(env: Env): Record<string, string> {
 async function getAuthUser(
   request: Request,
   sql: NeonQueryFunction<false, false>,
-): Promise<{ userId: string; role: string; name: string; email: string } | null> {
+): Promise<AuthUser | null> {
   const authHeader = request.headers.get('Authorization');
   if (!authHeader?.startsWith('Bearer ')) return null;
   const token = authHeader.slice(7).trim();
@@ -59,7 +63,35 @@ async function getAuthUser(
     `;
     if (!rows.length || !rows[0]) return null;
     const r = rows[0];
-    return { userId: String(r['id']), role: String(r['role'] ?? 'user'), name: String(r['name'] ?? ''), email: String(r['email'] ?? '') };
+    const userId = String(r['id']);
+    const role   = String(r['role'] ?? 'user');
+    const name   = String(r['name'] ?? '');
+    const email  = String(r['email'] ?? '');
+
+    // Admins bypass approval check
+    if (role === 'admin') {
+      return { status: 'ok', userId, role, name, email };
+    }
+
+    // Check approval status
+    const approvalRows = await sql`
+      SELECT status FROM user_approvals WHERE user_id = ${userId}::uuid LIMIT 1
+    `;
+
+    if (!approvalRows.length) {
+      // First request from this user — auto-create pending row
+      await sql`
+        INSERT INTO user_approvals (user_id, status) VALUES (${userId}::uuid, 'pending')
+        ON CONFLICT (user_id) DO NOTHING
+      `;
+      return { status: 'pending' };
+    }
+
+    const approvalStatus = String(approvalRows[0]?.['status'] ?? 'pending');
+    if (approvalStatus === 'approved') {
+      return { status: 'ok', userId, role, name, email };
+    }
+    return { status: approvalStatus === 'rejected' ? 'rejected' : 'pending' };
   } catch {
     return null;
   }
@@ -104,6 +136,26 @@ function alertEmailHtml(opts: {
   return { subject, html };
 }
 
+function approvalEmailHtml(opts: {
+  userName: string; approved: boolean; reason?: string;
+}): { subject: string; html: string } {
+  const { userName, approved, reason } = opts;
+  const subject = approved ? 'Tu cuenta SensorGrid ha sido aprobada' : 'Actualización sobre tu cuenta SensorGrid';
+  const html = `
+    <div style="font-family:sans-serif;max-width:480px;background:#07101f;color:#e8edf5;padding:24px;border-radius:12px;border:1px solid #1a3a5c;">
+      <h2 style="margin:0 0 8px;color:${approved ? '#22c55e' : '#ef4444'};">
+        ${approved ? '✅ Cuenta aprobada' : '❌ Cuenta rechazada'}
+      </h2>
+      <p style="margin:0 0 16px;color:#6b8ab0;font-size:14px;">Hola ${userName},</p>
+      ${approved
+        ? `<p style="color:#e8edf5;font-size:14px;">Tu cuenta en SensorGrid ha sido aprobada. Ya puedes iniciar sesión y acceder al panel de monitoreo.</p>`
+        : `<p style="color:#e8edf5;font-size:14px;">Tu solicitud de acceso a SensorGrid ha sido rechazada.${reason ? ` Motivo: ${reason}` : ''}</p>`
+      }
+      <p style="margin:16px 0 0;font-size:12px;color:#6b8ab0;">Mensaje automático del sistema SensorGrid.</p>
+    </div>`;
+  return { subject, html };
+}
+
 // ── Telegram ───────────────────────────────────────────────────────────────
 
 async function sendTelegramAlert(
@@ -134,10 +186,24 @@ export default {
 
     // ── GET routes (require auth) ────────────────────────────────────────
     if (request.method === 'GET') {
-      const authUser = await getAuthUser(request, sql);
-      if (!authUser) return new Response('Unauthorized', { status: 401, headers: corsHeaders(env) });
-
+      const authResult = await getAuthUser(request, sql);
       const hdrs = corsHeaders(env);
+
+      if (!authResult) return new Response('Unauthorized', { status: 401, headers: hdrs });
+      if (authResult.status !== 'ok') {
+        return new Response(
+          JSON.stringify({ code: 'pending_approval', status: authResult.status }),
+          { status: 403, headers: hdrs },
+        );
+      }
+      const authUser = authResult;
+
+      if (url.pathname === '/api/me') {
+        return new Response(
+          JSON.stringify({ userId: authUser.userId, name: authUser.name, email: authUser.email, role: authUser.role }),
+          { headers: hdrs },
+        );
+      }
 
       if (url.pathname === '/api/readings') {
         const devEui   = url.searchParams.get('dev_eui');
@@ -196,8 +262,12 @@ export default {
         if (authUser.role !== 'admin')
           return new Response('Forbidden', { status: 403, headers: hdrs });
         const rows = await sql`
-          SELECT id, name, email, role, "emailVerified", "createdAt"
-          FROM neon_auth.user ORDER BY "createdAt" DESC
+          SELECT u.id, u.name, u.email, u.role, u."emailVerified", u."createdAt",
+                 COALESCE(ua.status, 'approved') AS approval_status,
+                 ua.approved_at, ua.rejected_reason
+          FROM neon_auth.user u
+          LEFT JOIN user_approvals ua ON ua.user_id = u.id
+          ORDER BY u."createdAt" DESC
         `;
         return new Response(JSON.stringify(rows), { headers: hdrs });
       }
@@ -207,9 +277,17 @@ export default {
 
     // ── PATCH routes (require auth) ──────────────────────────────────────
     if (request.method === 'PATCH') {
-      const authUser = await getAuthUser(request, sql);
-      if (!authUser) return new Response('Unauthorized', { status: 401, headers: corsHeaders(env) });
+      const authResult = await getAuthUser(request, sql);
       const hdrs = corsHeaders(env);
+
+      if (!authResult) return new Response('Unauthorized', { status: 401, headers: hdrs });
+      if (authResult.status !== 'ok') {
+        return new Response(
+          JSON.stringify({ code: 'pending_approval' }),
+          { status: 403, headers: hdrs },
+        );
+      }
+      const authUser = authResult;
 
       // PATCH /api/alert-rules/:id
       const ruleMatch = url.pathname.match(/^\/api\/alert-rules\/(\d+)$/);
@@ -218,7 +296,6 @@ export default {
         const id   = parseInt(ruleMatch[1] ?? '0', 10);
         const body = await request.json() as Record<string, unknown>;
 
-        // Build safe update via parameterized fields
         if (body.threshold !== undefined) {
           await sql`UPDATE alert_rules SET threshold = ${parseFloat(String(body.threshold))} WHERE id = ${id}`;
         }
@@ -244,16 +321,62 @@ export default {
       if (userMatch) {
         if (authUser.role !== 'admin') return new Response('Forbidden', { status: 403, headers: hdrs });
         const userId = userMatch[1] ?? '';
-        const body   = await request.json() as { role?: string };
+        const body   = await request.json() as { role?: string; approval_status?: string; rejected_reason?: string };
+
         if (body.role !== undefined) {
-          const rows = await sql`
+          await sql`
             UPDATE neon_auth.user SET role = ${body.role}
             WHERE id = ${userId}::uuid
-            RETURNING id, name, email, role, "emailVerified", "createdAt"
           `;
-          return new Response(JSON.stringify(rows[0] ?? {}), { headers: hdrs });
         }
-        return new Response(JSON.stringify({ error: 'Nothing to update' }), { status: 400, headers: hdrs });
+
+        if (body.approval_status !== undefined) {
+          const newStatus = body.approval_status;
+          if (newStatus === 'approved') {
+            await sql`
+              UPDATE user_approvals
+              SET status = 'approved', approved_by = ${authUser.userId}::uuid,
+                  approved_at = NOW(), rejected_reason = NULL
+              WHERE user_id = ${userId}::uuid
+            `;
+            // Send approval email
+            const userRows = await sql`SELECT name, email FROM neon_auth.user WHERE id = ${userId}::uuid LIMIT 1`;
+            if (userRows[0]) {
+              const { subject, html } = approvalEmailHtml({
+                userName: String(userRows[0]['name'] ?? userRows[0]['email'] ?? 'Usuario'),
+                approved: true,
+              });
+              await sendEmail([String(userRows[0]['email'])], subject, html, env);
+            }
+          } else if (newStatus === 'rejected') {
+            const reason = body.rejected_reason ?? '';
+            await sql`
+              UPDATE user_approvals
+              SET status = 'rejected', rejected_reason = ${reason}, approved_at = NULL
+              WHERE user_id = ${userId}::uuid
+            `;
+            // Send rejection email
+            const userRows = await sql`SELECT name, email FROM neon_auth.user WHERE id = ${userId}::uuid LIMIT 1`;
+            if (userRows[0]) {
+              const { subject, html } = approvalEmailHtml({
+                userName: String(userRows[0]['name'] ?? userRows[0]['email'] ?? 'Usuario'),
+                approved: false,
+                reason,
+              });
+              await sendEmail([String(userRows[0]['email'])], subject, html, env);
+            }
+          }
+        }
+
+        const rows = await sql`
+          SELECT u.id, u.name, u.email, u.role, u."emailVerified", u."createdAt",
+                 COALESCE(ua.status, 'approved') AS approval_status,
+                 ua.approved_at, ua.rejected_reason
+          FROM neon_auth.user u
+          LEFT JOIN user_approvals ua ON ua.user_id = u.id
+          WHERE u.id = ${userId}::uuid
+        `;
+        return new Response(JSON.stringify(rows[0] ?? {}), { headers: hdrs });
       }
 
       return new Response('Not found', { status: 404, headers: hdrs });
@@ -336,7 +459,6 @@ export default {
         `;
 
         if (!existing.length) {
-          // New alert event
           const inserted = await sql`
             INSERT INTO alert_events (rule_id, dev_eui, metric, value)
             VALUES (${rule.id}, ${devEui}, ${rule.metric}, ${value})
@@ -359,7 +481,6 @@ export default {
             await sendTelegramAlert(rule.telegram_chat_id, devEui, rule.metric, value, rule.threshold, env);
           }
         } else {
-          // Existing: escalate to tier 2 if old enough
           const ev = existing[0];
           if (!ev) continue;
           const ageMin   = (Date.now() - new Date(ev['triggered_at'] as string).getTime()) / 60000;
@@ -378,7 +499,6 @@ export default {
           await sql`UPDATE alert_events SET value = ${value} WHERE id = ${ev['id']}`;
         }
       } else {
-        // Resolve open events
         await sql`
           UPDATE alert_events SET resolved_at = NOW()
           WHERE rule_id = ${rule.id} AND dev_eui = ${devEui} AND resolved_at IS NULL
