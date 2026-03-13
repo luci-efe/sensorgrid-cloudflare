@@ -280,22 +280,38 @@ export default {
 
       if (url.pathname === '/api/readings') {
         const devEui   = url.searchParams.get('dev_eui');
+        const since    = url.searchParams.get('since');
         const interval = url.searchParams.get('interval') ?? '24 hours';
         const bucket   = url.searchParams.get('bucket')   ?? '5 minutes';
-        const rows = await sql`
-          SELECT
-            time_bucket(${bucket}::interval, time) AS bucket, dev_eui,
-            AVG(laeq) AS laeq, MAX(lamax) AS lamax,
-            AVG(temperature) AS temperature, AVG(humidity) AS humidity,
-            AVG(pm25) AS pm25, AVG(pm10) AS pm10, AVG(voc_index) AS voc_index,
-            AVG(current) AS current, AVG(total_current) AS total_current,
-            MIN(battery) AS battery, BOOL_OR(door_open) AS door_open,
-            AVG(co2) AS co2, AVG(tvoc) AS tvoc, AVG(pressure) AS pressure,
-            AVG(light_level) AS light_level, BOOL_OR(pir) AS pir
-          FROM readings
-          WHERE time > NOW() - ${interval}::interval AND dev_eui = ${devEui}
-          GROUP BY bucket, dev_eui ORDER BY bucket ASC
-        `;
+        const rows = since
+          ? await sql`
+              SELECT
+                time_bucket(${bucket}::interval, time) AS bucket, dev_eui,
+                AVG(laeq) AS laeq, MAX(lamax) AS lamax,
+                AVG(temperature) AS temperature, AVG(humidity) AS humidity,
+                AVG(pm25) AS pm25, AVG(pm10) AS pm10, AVG(voc_index) AS voc_index,
+                AVG(current) AS current, AVG(total_current) AS total_current,
+                MIN(battery) AS battery, BOOL_OR(door_open) AS door_open,
+                AVG(co2) AS co2, AVG(tvoc) AS tvoc, AVG(pressure) AS pressure,
+                AVG(light_level) AS light_level, BOOL_OR(pir) AS pir
+              FROM readings
+              WHERE time >= ${since}::timestamptz AND dev_eui = ${devEui}
+              GROUP BY bucket, dev_eui ORDER BY bucket ASC
+            `
+          : await sql`
+              SELECT
+                time_bucket(${bucket}::interval, time) AS bucket, dev_eui,
+                AVG(laeq) AS laeq, MAX(lamax) AS lamax,
+                AVG(temperature) AS temperature, AVG(humidity) AS humidity,
+                AVG(pm25) AS pm25, AVG(pm10) AS pm10, AVG(voc_index) AS voc_index,
+                AVG(current) AS current, AVG(total_current) AS total_current,
+                MIN(battery) AS battery, BOOL_OR(door_open) AS door_open,
+                AVG(co2) AS co2, AVG(tvoc) AS tvoc, AVG(pressure) AS pressure,
+                AVG(light_level) AS light_level, BOOL_OR(pir) AS pir
+              FROM readings
+              WHERE time > NOW() - ${interval}::interval AND dev_eui = ${devEui}
+              GROUP BY bucket, dev_eui ORDER BY bucket ASC
+            `;
         return new Response(JSON.stringify(rows), { headers: hdrs });
       }
 

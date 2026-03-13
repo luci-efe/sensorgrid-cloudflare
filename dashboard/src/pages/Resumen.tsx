@@ -62,10 +62,23 @@ function computeRangeBars(data: ChartPoint[], key: string): { ok: number; warn: 
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-function rangeToParams(range: string) {
+// Returns the UTC ISO timestamp for 00:00:00 today in Guadalajara (America/Mexico_City)
+function getMidnightGuadalajara(): string {
+  const now = new Date()
+  // sv-SE gives "YYYY-MM-DD HH:mm:ss" — use it to compute the UTC↔MX offset precisely
+  const mxStr  = now.toLocaleString('sv-SE', { timeZone: 'America/Mexico_City' })
+  const utcStr = now.toISOString().replace('T', ' ').slice(0, 19)
+  const offsetMs = new Date(utcStr + 'Z').getTime() - new Date(mxStr + 'Z').getTime()
+  // Date in MX timezone (YYYY-MM-DD)
+  const dateStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' })
+  // Midnight in MX → convert to UTC by adding the offset
+  return new Date(new Date(dateStr + 'T00:00:00Z').getTime() + offsetMs).toISOString()
+}
+
+function rangeToParams(range: string): { interval: string; bucket: string; since?: string } {
   if (range === '30d') return { interval: '30 days', bucket: '4 hours' }
   if (range === '7d')  return { interval: '7 days',  bucket: '1 hour' }
-  return                     { interval: '2 days',   bucket: '10 minutes' }
+  return { interval: '1 day', bucket: '5 minutes', since: getMidnightGuadalajara() }
 }
 
 function tempColor(t: number | null | undefined): string {
@@ -426,7 +439,7 @@ export default function Resumen() {
       setLoading(true)
       setError(null)
       try {
-        const { interval, bucket } = rangeToParams(range)
+        const { interval, bucket, since } = rangeToParams(range)
         const [devices, lat] = await Promise.all([fetchDevices(), fetchLatest()])
         if (cancelled) return
         setLatest(lat)
@@ -443,8 +456,8 @@ export default function Resumen() {
         const entries = [...map.entries()]
         const readings = await Promise.all(entries.map(([, { am307, ct101 }]) =>
           Promise.all([
-            am307 ? fetchReadings(am307.dev_eui, interval, bucket).catch(() => []) : Promise.resolve([]),
-            ct101 ? fetchReadings(ct101.dev_eui, interval, bucket).catch(() => []) : Promise.resolve([]),
+            am307 ? fetchReadings(am307.dev_eui, interval, bucket, since).catch(() => []) : Promise.resolve([]),
+            ct101 ? fetchReadings(ct101.dev_eui, interval, bucket, since).catch(() => []) : Promise.resolve([]),
           ])
         ))
         if (cancelled) return
@@ -472,7 +485,7 @@ export default function Resumen() {
         <div className="flex items-center gap-1 rounded-lg p-1"
           style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
           {([
-            { v: 'hoy', l: '48 h' },
+            { v: 'hoy', l: 'Hoy' },
             { v: '7d',  l: '7 días' },
             { v: '30d', l: '30 días' },
           ] as const).map(({ v, l }) => (

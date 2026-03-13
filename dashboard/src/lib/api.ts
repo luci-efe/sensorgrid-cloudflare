@@ -94,13 +94,16 @@ export async function fetchReadings(
 	devEui: string,
 	interval = '1 day',
 	bucket = '5 minutes',
+	since?: string,
 ): Promise<Reading[]> {
 	if (USE_MOCK) {
 		const hours     = interval.includes('30') ? 720 : interval.includes('7') ? 168 : 24;
 		const bucketMin = bucket.includes('4') ? 240 : bucket.includes('hour') ? 60 : 5;
 		return generateMockReadings(devEui, hours, bucketMin);
 	}
-	const params = new URLSearchParams({ dev_eui: devEui, interval, bucket });
+	const params = new URLSearchParams({ dev_eui: devEui, bucket });
+	if (since) params.set('since', since);
+	else params.set('interval', interval);
 	return get<Reading[]>(`/api/readings?${params}`);
 }
 
