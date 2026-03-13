@@ -2,16 +2,27 @@ import type { Device, LatestReading, Reading } from './mock';
 import { MOCK_DEVICES, generateMockReadings, getMockLatest } from './mock';
 import { getSessionToken } from './auth';
 
-const USE_MOCK    = import.meta.env.VITE_USE_MOCK === 'true';
-const WORKER_URL  = import.meta.env.VITE_WORKER_URL ?? '';
+export const USE_MOCK   = import.meta.env.VITE_USE_MOCK === 'true';
+const WORKER_URL        = import.meta.env.VITE_WORKER_URL ?? '';
+
+export class PendingApprovalError extends Error {
+  constructor() {
+    super('pending_approval');
+    this.name = 'PendingApprovalError';
+  }
+}
 
 async function get<T>(path: string): Promise<T> {
 	const token = USE_MOCK ? null : await getSessionToken();
 	const headers: Record<string, string> = {};
 	if (token) headers['Authorization'] = `Bearer ${token}`;
 	const res = await fetch(`${WORKER_URL}${path}`, { headers });
+	if (res.status === 403) {
+		const body = await res.json().catch(() => ({})) as { code?: string };
+		if (body.code === 'pending_approval') throw new PendingApprovalError();
+	}
 	if (!res.ok) throw new Error(`API ${path} returned ${res.status}`);
-	return res.json();
+	return res.json() as Promise<T>;
 }
 
 async function patch<T>(path: string, body: unknown): Promise<T> {
@@ -62,6 +73,9 @@ export type AdminUser = {
 	role: string | null;
 	emailVerified: boolean;
 	createdAt: string;
+	approval_status: 'pending' | 'approved' | 'rejected';
+	approved_at: string | null;
+	rejected_reason: string | null;
 };
 
 // ── Device / readings ─────────────────────────────────────────────────────
@@ -114,6 +128,16 @@ export async function fetchAdminUsers(): Promise<AdminUser[]> {
 	return get<AdminUser[]>('/api/admin/users');
 }
 
-export async function patchAdminUser(id: string, updates: { role?: string }): Promise<AdminUser> {
+export async function patchAdminUser(
+	id: string,
+	updates: { role?: string; approval_status?: string; rejected_reason?: string },
+): Promise<AdminUser> {
 	return patch<AdminUser>(`/api/admin/users/${id}`, updates);
+}
+
+// ── Me ─────────────────────────────────────────────────────────────────────
+
+export async function fetchMe(): Promise<{ userId: string; name: string; email: string; role: string }> {
+	if (USE_MOCK) return { userId: 'mock', name: 'Usuario Mock', email: 'mock@example.com', role: 'admin' };
+	return get('/api/me');
 }

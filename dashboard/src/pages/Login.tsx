@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { signIn } from '../lib/auth'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 
 export default function Login() {
   const [email, setEmail]       = useState('')
@@ -115,6 +115,13 @@ export default function Login() {
           >
             {loading ? 'Iniciando sesión…' : 'Iniciar sesión'}
           </button>
+
+          <p className="text-center text-xs" style={{ color: 'var(--muted)' }}>
+            ¿No tienes cuenta?{' '}
+            <Link to="/signup" className="font-medium" style={{ color: '#1d4ed8' }}>
+              Crear cuenta
+            </Link>
+          </p>
         </form>
       </div>
     </div>
