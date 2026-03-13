@@ -30,9 +30,7 @@ function batColor(v: number | null): string {
 }
 
 function SensorCard({
-  device,
-  hasBattery,
-  latest,
+  device, hasBattery, latest,
 }: {
   device: Device | null
   hasBattery: boolean
@@ -40,17 +38,15 @@ function SensorCard({
 }) {
   const devEui = device?.dev_eui
   const active = isActive(devEui, latest)
-  const lr = latest.find(r => r.dev_eui === devEui)
-  const bat = lr?.battery ?? null
+  const lr     = latest.find(r => r.dev_eui === devEui)
+  const bat    = lr?.battery ?? null
   const isEmpty = !device
 
   return (
-    <div className={`rounded-xl border p-6 flex flex-col gap-4 ${isEmpty ? 'opacity-40' : ''}`}
-      style={{
-        background: 'var(--surface)',
-        borderColor: active ? 'var(--border)' : '#f59e0b30',
-      }}>
-
+    <div
+      className={`rounded-xl border p-5 flex flex-col gap-4 ${isEmpty ? 'opacity-40' : ''}`}
+      style={{ background: 'var(--surface)', borderColor: active ? 'var(--border)' : '#f59e0b30' }}
+    >
       {/* Status header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -72,7 +68,6 @@ function SensorCard({
         </div>
       ) : (
         <>
-          {/* Sensor info */}
           <div>
             <p className="font-semibold" style={{ color: 'var(--text)' }}>{device!.name}</p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
@@ -80,7 +75,6 @@ function SensorCard({
             </p>
           </div>
 
-          {/* Battery / power */}
           {hasBattery && active ? (
             <div className="flex items-center gap-2">
               <Battery size={14} color={batColor(bat)} />
@@ -104,9 +98,11 @@ function SensorCard({
             </div>
           )}
 
-          {/* Last reading */}
           <div className="pt-2 border-t text-xs" style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}>
-            Última lectura: <span className="font-medium" style={{ color: 'var(--text)' }}>{timeAgo(devEui, latest)}</span>
+            Última lectura:{' '}
+            <span className="font-medium" style={{ color: 'var(--text)' }}>
+              {timeAgo(devEui, latest)}
+            </span>
           </div>
 
           <p className="text-xs font-mono" style={{ color: 'var(--muted)' }}>
@@ -119,10 +115,10 @@ function SensorCard({
 }
 
 export default function Sensores() {
-  const [groups, setGroups] = useState<SensorGroup[]>([])
+  const [groups, setGroups]       = useState<SensorGroup[]>([])
   const [ungrouped, setUngrouped] = useState<Device[]>([])
-  const [latest, setLatest] = useState<LatestReading[]>([])
-  const [loading, setLoading] = useState(true)
+  const [latest, setLatest]       = useState<LatestReading[]>([])
+  const [loading, setLoading]     = useState(true)
 
   useEffect(() => {
     async function load() {
@@ -148,16 +144,16 @@ export default function Sensores() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6" style={{ color: 'var(--text)' }}>Sensores</h1>
+      <h1 className="text-xl font-bold mb-6" style={{ color: 'var(--text)' }}>Sensores</h1>
 
       {groups.map(g => (
         <section key={g.label} className="mb-8">
           <h2 className="text-sm font-semibold mb-3 pb-2 border-b flex items-center gap-2"
             style={{ color: 'var(--text)', borderColor: 'var(--border)' }}>
-            🧊 {g.label}
+            {g.label}
           </h2>
-          <div className="grid grid-cols-2 gap-3 max-w-xl">
-            <SensorCard device={g.am307} hasBattery={true} latest={latest} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
+            <SensorCard device={g.am307} hasBattery={true}  latest={latest} />
             <SensorCard device={g.ct101} hasBattery={false} latest={latest} />
           </div>
         </section>
@@ -165,10 +161,11 @@ export default function Sensores() {
 
       {ungrouped.length > 0 && (
         <section className="mb-8">
-          <h2 className="text-sm font-semibold mb-3 pb-2 border-b" style={{ color: 'var(--text)', borderColor: 'var(--border)' }}>
-            🌡️ Otros sensores
+          <h2 className="text-sm font-semibold mb-3 pb-2 border-b"
+            style={{ color: 'var(--text)', borderColor: 'var(--border)' }}>
+            Otros sensores
           </h2>
-          <div className="grid grid-cols-2 gap-3 max-w-xl">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
             {ungrouped.map(d => (
               <SensorCard key={d.dev_eui} device={d} hasBattery={d.type !== 'power'} latest={latest} />
             ))}
