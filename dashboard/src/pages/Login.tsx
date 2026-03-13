@@ -1,13 +1,12 @@
 import { useState } from 'react'
 import { signIn } from '../lib/auth'
-import { useNavigate, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 
 export default function Login() {
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [error, setError]       = useState('')
   const [loading, setLoading]   = useState(false)
-  const navigate = useNavigate()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -18,7 +17,9 @@ export default function Login() {
       if (result?.error) {
         setError(result.error.message ?? 'Credenciales incorrectas')
       } else {
-        navigate('/')
+        // Full page navigation ensures useSession() re-initializes fresh,
+        // avoiding the stale null-session state left over from signOut()
+        window.location.href = '/'
       }
     } catch {
       setError('Error al conectar con el servidor de autenticación')
