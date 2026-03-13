@@ -47,17 +47,17 @@ export const MOCK_DEVICES: Device[] = [
 	{
 		dev_eui: AM307_F1,
 		name: 'Sensor 7-en-1 Ref. 1',
-		location: 'Refrigerador 1 — Lácteos',
+		location: 'Área de Refrigeración',
 		type: 'ambient',
-		fridge_label: 'Refrigerador 1 — Lácteos',
+		fridge_label: 'Refrigerador 1',
 		created_at: new Date(Date.now() - 7 * 86400000).toISOString()
 	},
 	{
 		dev_eui: CT101_F1,
 		name: 'Sensor Corriente Ref. 1',
-		location: 'Refrigerador 1 — Lácteos',
+		location: 'Área de Refrigeración',
 		type: 'power',
-		fridge_label: 'Refrigerador 1 — Lácteos',
+		fridge_label: 'Refrigerador 1',
 		created_at: new Date(Date.now() - 7 * 86400000).toISOString()
 	},
 	{
