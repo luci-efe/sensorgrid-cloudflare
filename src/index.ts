@@ -78,8 +78,9 @@ async function handleAuthProxy(request: Request, env: Env): Promise<Response> {
   for (const [k, v] of request.headers.entries()) {
     if (!skipHeaders.has(k.toLowerCase())) proxyReqHeaders.set(k, v);
   }
-  // Override Origin with our trusted domain so Neon Auth accepts the request
-  proxyReqHeaders.set('Origin', env.DASHBOARD_ORIGIN ?? 'https://sensorgrid.site');
+  // Use the Neon Auth server's own origin so Better Auth treats this as a same-origin request
+  const neonOrigin = new URL(neonAuthBase).origin;
+  proxyReqHeaders.set('Origin', neonOrigin);
 
   const proxyRes = await fetch(targetUrl, {
     method: request.method,
