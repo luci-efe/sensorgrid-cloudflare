@@ -65,7 +65,7 @@ function computeRangeBars(data: ChartPoint[], key: string): { ok: number; warn: 
 function rangeToParams(range: string) {
   if (range === '30d') return { interval: '30 days', bucket: '4 hours' }
   if (range === '7d')  return { interval: '7 days',  bucket: '1 hour' }
-  return                     { interval: '1 day',    bucket: '5 minutes' }
+  return                     { interval: '2 days',   bucket: '10 minutes' }
 }
 
 function tempColor(t: number | null | undefined): string {
@@ -182,9 +182,17 @@ function MetricTile({
   const isSparse    = validPoints < 2
 
   const thresholds = METRIC_THRESHOLDS[metricKey]
-  const yDomain: [number | string, number | string] = thresholds
-    ? [thresholds.domainMin, thresholds.domainMax]
-    : ['auto', 'auto']
+  // Expand threshold domain to always include actual data values
+  const dataValues = data.filter(d => d.v !== null).map(d => d.v as number)
+  const yDomain: [number | string, number | string] = (() => {
+    if (!thresholds) return ['auto', 'auto']
+    if (!dataValues.length) return [thresholds.domainMin, thresholds.domainMax]
+    const pad = (thresholds.domainMax - thresholds.domainMin) * 0.08
+    return [
+      Math.min(thresholds.domainMin, Math.min(...dataValues) - pad),
+      Math.max(thresholds.domainMax, Math.max(...dataValues) + pad),
+    ]
+  })()
 
   const rangeBars = computeRangeBars(data, metricKey)
   const tickStyle = { fontSize: 10, fill: '#6b8ab0' }
@@ -225,7 +233,11 @@ function MetricTile({
                 width={38}
                 tickFormatter={v => typeof v === 'number' ? (Number.isInteger(v) ? String(v) : v.toFixed(decimals)) : String(v)}
               />
-              <Scatter data={data.filter(d => d.v !== null)} fill={color} />
+              <Scatter
+                data={data.filter(d => d.v !== null)}
+                fill={color}
+                shape={(props: any) => <circle cx={props.cx} cy={props.cy} r={6} fill={color} stroke="var(--surface)" strokeWidth={2} />}
+              />
               <Tooltip
                 contentStyle={{ background: '#0c1a2e', border: '1px solid #1a3a5c', borderRadius: 8, fontSize: 12, padding: '6px 10px' }}
                 formatter={(v: unknown) => [`${(v as number)?.toFixed(decimals)}${unit ? ` ${unit}` : ''}`, label]}
@@ -460,7 +472,7 @@ export default function Resumen() {
         <div className="flex items-center gap-1 rounded-lg p-1"
           style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
           {([
-            { v: 'hoy', l: 'Hoy' },
+            { v: 'hoy', l: '48 h' },
             { v: '7d',  l: '7 días' },
             { v: '30d', l: '30 días' },
           ] as const).map(({ v, l }) => (
