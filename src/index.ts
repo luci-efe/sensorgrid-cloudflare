@@ -8,6 +8,7 @@ interface Env {
   TELEGRAM_TOKEN: string;
   RESEND_API_KEY: string;
   DASHBOARD_ORIGIN?: string;
+  NEON_AUTH_BASE_URL?: string;
 }
 
 interface TTNPayload {
@@ -30,15 +31,82 @@ type AuthUser =
   | { status: 'ok'; userId: string; role: string; name: string; email: string }
   | { status: 'pending' | 'rejected' };
 
-// ── CORS headers ───────────────────────────────────────────────────────────
+// ── CORS helpers ───────────────────────────────────────────────────────────
 
-function corsHeaders(env: Env): Record<string, string> {
+const ALLOWED_ORIGINS = [
+  'https://sensorgrid.site',
+  'https://www.sensorgrid.site',
+  'https://sensorgrid-dashboard.pages.dev',
+];
+
+function resolveOrigin(request: Request, env: Env): string {
+  const reqOrigin = request.headers.get('Origin') ?? '';
+  if (ALLOWED_ORIGINS.includes(reqOrigin)) return reqOrigin;
+  return env.DASHBOARD_ORIGIN ?? (reqOrigin || '*');
+}
+
+function corsHeaders(env: Env, request?: Request): Record<string, string> {
+  const origin = request ? resolveOrigin(request, env) : (env.DASHBOARD_ORIGIN ?? '*');
   return {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': env.DASHBOARD_ORIGIN ?? '*',
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Cookie',
+    'Vary': 'Origin',
   };
+}
+
+// ── Auth proxy ─────────────────────────────────────────────────────────────
+
+async function handleAuthProxy(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const neonAuthBase = env.NEON_AUTH_BASE_URL
+    ?? 'https://ep-dawn-forest-adg30i2s.neonauth.c-2.us-east-1.aws.neon.tech/neondb/auth';
+
+  // Strip /auth prefix → becomes the path within the Neon Auth service
+  const authPath = url.pathname.slice('/auth'.length);
+  const targetUrl = `${neonAuthBase}${authPath}${url.search}`;
+
+  // Build proxy headers — forward everything except hop-by-hop and origin-related headers
+  const skipHeaders = new Set(['host', 'origin', 'referer', 'cf-connecting-ip',
+    'cf-ipcountry', 'cf-ray', 'cf-visitor', 'x-forwarded-for', 'x-forwarded-proto',
+    'x-real-ip', 'sec-fetch-dest', 'sec-fetch-mode', 'sec-fetch-site', 'sec-ch-ua',
+    'sec-ch-ua-mobile', 'sec-ch-ua-platform']);
+
+  const proxyReqHeaders = new Headers();
+  for (const [k, v] of request.headers.entries()) {
+    if (!skipHeaders.has(k.toLowerCase())) proxyReqHeaders.set(k, v);
+  }
+
+  const proxyRes = await fetch(targetUrl, {
+    method: request.method,
+    headers: proxyReqHeaders,
+    body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : undefined,
+  });
+
+  // Build response — apply CORS for the browser, re-scope Set-Cookie to our domain
+  const origin = resolveOrigin(request, env);
+  const resHeaders = new Headers({
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Cookie',
+    'Vary': 'Origin',
+  });
+
+  for (const [k, v] of proxyRes.headers.entries()) {
+    const lower = k.toLowerCase();
+    if (lower === 'set-cookie') {
+      // Remove Domain so the cookie is scoped to the Worker host instead of .neon.tech
+      const clean = v.replace(/;\s*domain=[^;]*/i, '');
+      resHeaders.append('Set-Cookie', clean);
+    } else if (lower !== 'access-control-allow-origin' && lower !== 'access-control-allow-credentials') {
+      resHeaders.set(k, v);
+    }
+  }
+
+  return new Response(proxyRes.body, { status: proxyRes.status, headers: resHeaders });
 }
 
 // ── Auth middleware ────────────────────────────────────────────────────────
@@ -181,13 +249,18 @@ export default {
 
     // CORS pre-flight
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: corsHeaders(env) });
+      return new Response(null, { status: 204, headers: corsHeaders(env, request) });
+    }
+
+    // ── Auth proxy → forward /auth/* to Neon Auth server ─────────────────
+    if (url.pathname.startsWith('/auth/') || url.pathname === '/auth') {
+      return handleAuthProxy(request, env);
     }
 
     // ── GET routes (require auth) ────────────────────────────────────────
     if (request.method === 'GET') {
       const authResult = await getAuthUser(request, sql);
-      const hdrs = corsHeaders(env);
+      const hdrs = corsHeaders(env, request);
 
       if (!authResult) return new Response('Unauthorized', { status: 401, headers: hdrs });
       if (authResult.status !== 'ok') {
@@ -278,7 +351,7 @@ export default {
     // ── PATCH routes (require auth) ──────────────────────────────────────
     if (request.method === 'PATCH') {
       const authResult = await getAuthUser(request, sql);
-      const hdrs = corsHeaders(env);
+      const hdrs = corsHeaders(env, request);
 
       if (!authResult) return new Response('Unauthorized', { status: 401, headers: hdrs });
       if (authResult.status !== 'ok') {
