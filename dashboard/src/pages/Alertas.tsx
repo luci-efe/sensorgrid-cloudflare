@@ -311,13 +311,15 @@ export default function Alertas() {
 
   useEffect(() => {
     async function load() {
-      setLoading(true)
+      if (events.length === 0) setLoading(true)
       const [r, e] = await Promise.allSettled([fetchAlertRules(), fetchAlertEvents(100)])
       setRules(r.status === 'fulfilled' ? r.value : [])
       setEvents(e.status === 'fulfilled' ? e.value : [])
       setLoading(false)
     }
     load()
+    const id = setInterval(load, 60_000)
+    return () => clearInterval(id)
   }, [])
 
   const activeEvents   = events.filter(e => !e.resolved_at)

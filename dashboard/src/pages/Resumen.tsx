@@ -530,17 +530,28 @@ function FridgeSection({ group, latest, range }: { group: FridgeGroup; latest: L
 }
 
 // ── Main page ───────────────────────────────────────────────────────────────
+const AUTO_REFRESH_MS = 60_000 // refresh data every 60 seconds
+
 export default function Resumen() {
-  const [range, setRange]   = useState('hoy')
-  const [groups, setGroups] = useState<FridgeGroup[]>([])
-  const [latest, setLatest] = useState<LatestReading[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError]   = useState<string | null>(null)
+  const [range, setRange]       = useState('hoy')
+  const [groups, setGroups]     = useState<FridgeGroup[]>([])
+  const [latest, setLatest]     = useState<LatestReading[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [error, setError]       = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  // Auto-refresh timer
+  useEffect(() => {
+    const id = setInterval(() => setRefreshKey(k => k + 1), AUTO_REFRESH_MS)
+    return () => clearInterval(id)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
+    const isAutoRefresh = refreshKey > 0 && groups.length > 0
     async function load() {
-      setLoading(true)
+      // Only show full loading spinner on initial load, not auto-refresh
+      if (!isAutoRefresh) setLoading(true)
       setError(null)
       try {
         const { interval, bucket, since } = rangeToParams(range)
@@ -587,7 +598,7 @@ export default function Resumen() {
     }
     load()
     return () => { cancelled = true }
-  }, [range])
+  }, [range, refreshKey])
 
   return (
     <div>
