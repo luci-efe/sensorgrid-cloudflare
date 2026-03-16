@@ -361,13 +361,13 @@ export default {
           ? await sql`
               SELECT
                 time_bucket(${bucket}::interval, time) AS bucket, dev_eui,
-                AVG(laeq) AS laeq, MAX(lamax) AS lamax,
-                AVG(temperature) AS temperature, AVG(humidity) AS humidity,
-                AVG(pm25) AS pm25, AVG(pm10) AS pm10, AVG(voc_index) AS voc_index,
-                AVG(current) AS current, AVG(total_current) AS total_current,
-                MIN(battery) AS battery, BOOL_OR(door_open) AS door_open,
-                AVG(co2) AS co2, AVG(tvoc) AS tvoc, AVG(pressure) AS pressure,
-                AVG(light_level) AS light_level, BOOL_OR(pir) AS pir
+                ROUND(AVG(laeq)::numeric, 2) AS laeq, ROUND(MAX(lamax)::numeric, 2) AS lamax,
+                ROUND(AVG(temperature)::numeric, 2) AS temperature, ROUND(AVG(humidity)::numeric, 2) AS humidity,
+                ROUND(AVG(pm25)::numeric, 2) AS pm25, ROUND(AVG(pm10)::numeric, 2) AS pm10, ROUND(AVG(voc_index)::numeric, 0) AS voc_index,
+                ROUND(AVG(current)::numeric, 3) AS current, ROUND(AVG(total_current)::numeric, 3) AS total_current,
+                ROUND(MIN(battery)::numeric, 1) AS battery, BOOL_OR(door_open) AS door_open,
+                ROUND(AVG(co2)::numeric, 0) AS co2, ROUND(AVG(tvoc)::numeric, 0) AS tvoc, ROUND(AVG(pressure)::numeric, 1) AS pressure,
+                ROUND(AVG(light_level)::numeric, 1) AS light_level, BOOL_OR(pir) AS pir
               FROM readings
               WHERE time >= ${since}::timestamptz AND dev_eui = ${devEui}
               GROUP BY bucket, dev_eui ORDER BY bucket ASC
@@ -375,13 +375,13 @@ export default {
           : await sql`
               SELECT
                 time_bucket(${bucket}::interval, time) AS bucket, dev_eui,
-                AVG(laeq) AS laeq, MAX(lamax) AS lamax,
-                AVG(temperature) AS temperature, AVG(humidity) AS humidity,
-                AVG(pm25) AS pm25, AVG(pm10) AS pm10, AVG(voc_index) AS voc_index,
-                AVG(current) AS current, AVG(total_current) AS total_current,
-                MIN(battery) AS battery, BOOL_OR(door_open) AS door_open,
-                AVG(co2) AS co2, AVG(tvoc) AS tvoc, AVG(pressure) AS pressure,
-                AVG(light_level) AS light_level, BOOL_OR(pir) AS pir
+                ROUND(AVG(laeq)::numeric, 2) AS laeq, ROUND(MAX(lamax)::numeric, 2) AS lamax,
+                ROUND(AVG(temperature)::numeric, 2) AS temperature, ROUND(AVG(humidity)::numeric, 2) AS humidity,
+                ROUND(AVG(pm25)::numeric, 2) AS pm25, ROUND(AVG(pm10)::numeric, 2) AS pm10, ROUND(AVG(voc_index)::numeric, 0) AS voc_index,
+                ROUND(AVG(current)::numeric, 3) AS current, ROUND(AVG(total_current)::numeric, 3) AS total_current,
+                ROUND(MIN(battery)::numeric, 1) AS battery, BOOL_OR(door_open) AS door_open,
+                ROUND(AVG(co2)::numeric, 0) AS co2, ROUND(AVG(tvoc)::numeric, 0) AS tvoc, ROUND(AVG(pressure)::numeric, 1) AS pressure,
+                ROUND(AVG(light_level)::numeric, 1) AS light_level, BOOL_OR(pir) AS pir
               FROM readings
               WHERE time > NOW() - ${interval}::interval AND dev_eui = ${devEui}
               GROUP BY bucket, dev_eui ORDER BY bucket ASC
