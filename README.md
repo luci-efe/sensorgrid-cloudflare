@@ -5,10 +5,10 @@ IoT environmental monitoring system for the ITESO cafeteria kitchen. Monitors re
 ## Architecture
 
 ```
-Sensors (LoRaWAN 915 MHz)
+Sensors (CT101, AM307 LoRaWAN 915 MHz)
     │
     ▼
-Dragino LP8 Gateway (4G LTE)
+Milesight UG63 Lorawan Gateway (4G LTE)
     │
     ▼
 The Things Network v3
