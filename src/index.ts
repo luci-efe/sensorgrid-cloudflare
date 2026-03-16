@@ -241,7 +241,7 @@ async function checkStaleDevices(env: Env): Promise<void> {
     FROM devices d
     LEFT JOIN readings r ON r.dev_eui = d.dev_eui
     GROUP BY d.dev_eui, d.name, d.fridge_label
-    HAVING MAX(r.time) IS NULL OR MAX(r.time) < NOW() - INTERVAL '20 minutes'
+    HAVING MAX(r.time) IS NULL OR MAX(r.time) < NOW() - INTERVAL '10 minutes'
   `;
 
   if (staleDevices.length === 0) return;
@@ -304,7 +304,7 @@ async function checkStaleDevices(env: Env): Promise<void> {
     WHERE metric = 'stale_data' AND resolved_at IS NULL
       AND dev_eui IN (
         SELECT dev_eui FROM readings
-        WHERE time > NOW() - INTERVAL '20 minutes'
+        WHERE time > NOW() - INTERVAL '10 minutes'
       )
   `;
 }
@@ -631,7 +631,7 @@ export default {
         if (decoded.light_level == null) continue;
         const recentRows = await sql`
           SELECT light_level FROM readings
-          WHERE dev_eui = ${devEui} AND time > NOW() - INTERVAL '20 minutes'
+          WHERE dev_eui = ${devEui} AND time > NOW() - INTERVAL '10 minutes'
             AND light_level IS NOT NULL
           ORDER BY time DESC LIMIT 3
         `;
