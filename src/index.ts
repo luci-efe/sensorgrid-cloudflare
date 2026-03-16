@@ -5,7 +5,6 @@ import { neon, type NeonQueryFunction } from '@neondatabase/serverless';
 interface Env {
   DATABASE_URL: string;
   TTN_WEBHOOK_SECRET: string;
-  TELEGRAM_TOKEN: string;
   RESEND_API_KEY: string;
   DASHBOARD_ORIGIN?: string;
   NEON_AUTH_BASE_URL?: string;
@@ -230,22 +229,6 @@ function approvalEmailHtml(opts: {
   return { subject, html };
 }
 
-// ── Telegram ───────────────────────────────────────────────────────────────
-
-async function sendTelegramAlert(
-  chatId: string, devEui: string, metric: string, value: number, threshold: number, env: Env,
-): Promise<void> {
-  if (!env.TELEGRAM_TOKEN) return;
-  await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text: `⚠️ SensorGrid Alert\nDevice: ${devEui}\nMetric: ${metric}\nValue: ${value} (threshold: ${threshold})`,
-    }),
-  });
-}
-
 // ── Stale data check (cron) ────────────────────────────────────────────────
 
 async function checkStaleDevices(env: Env): Promise<void> {
@@ -313,22 +296,6 @@ async function checkStaleDevices(env: Env): Promise<void> {
         <p style="margin:16px 0 0;font-size:12px;color:#6b8ab0;">Mensaje automático del sistema SensorGrid.</p>
       </div>`;
     await sendEmail(emails, subject, html, env);
-
-    // Also send Telegram if configured
-    if (env.TELEGRAM_TOKEN) {
-      const chatRules = await sql`SELECT DISTINCT telegram_chat_id FROM alert_rules WHERE telegram_chat_id IS NOT NULL AND enabled = true`;
-      for (const cr of chatRules) {
-        const chatId = String(cr['telegram_chat_id']);
-        await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: `📡 SensorGrid: Sin datos\nDispositivo: ${deviceName}\nÚltimo dato: ${lastSeen}`,
-          }),
-        });
-      }
-    }
   }
 
   // Resolve stale_data alerts for devices that are now sending data again
@@ -681,7 +648,7 @@ export default {
             SELECT id FROM alert_events
             WHERE rule_id = ${rule.id} AND dev_eui = ${devEui}
               AND resolved_at IS NOT NULL
-              AND resolved_at > NOW() - INTERVAL '15 minutes'
+              AND resolved_at > NOW() - INTERVAL '30 minutes'
             LIMIT 1
           `;
           if (recentlyResolved.length > 0) continue;
@@ -703,9 +670,6 @@ export default {
             });
             await sendEmail(rule.email_tier1 as string[], subject, html, env);
             await sql`UPDATE alert_events SET tier1_sent_at = NOW() WHERE id = ${eventId}`;
-          }
-          if (rule.telegram_chat_id) {
-            await sendTelegramAlert(rule.telegram_chat_id, devEui, rule.metric, value, rule.threshold, env);
           }
         } else {
           const ev = existing[0];

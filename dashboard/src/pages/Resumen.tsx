@@ -4,7 +4,8 @@ import {
   ResponsiveContainer, Tooltip, CartesianGrid, ReferenceArea,
 } from 'recharts'
 import { Thermometer, Droplets, Zap, Wind, FlaskConical, DoorOpen, DoorClosed, RefreshCw } from 'lucide-react'
-import { fetchDevices, fetchLatest, fetchReadings } from '../lib/api'
+import { fetchDevices, fetchLatest, fetchReadings, fetchAlertRules } from '../lib/api'
+import type { AlertRule } from '../lib/api'
 import type { Device, LatestReading, Reading } from '../lib/mock'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -28,13 +29,70 @@ type Thresholds = {
   dangerBelow?: number
 }
 
-const METRIC_THRESHOLDS: Record<string, Thresholds> = {
+// Fallback thresholds used when DB rules are not yet loaded
+const FALLBACK_THRESHOLDS: Record<string, Thresholds> = {
   temperature:   { domainMin: -2,  domainMax: 14,   warnAbove: 6,   dangerAbove: 8 },
   humidity:      { domainMin: 30,  domainMax: 100,  warnAbove: 85,  warnBelow: 50 },
   co2:           { domainMin: 350, domainMax: 2000, warnAbove: 800, dangerAbove: 1200 },
   tvoc:          { domainMin: 0,   domainMax: 600,  warnAbove: 150, dangerAbove: 500 },
   total_current: { domainMin: 0,   domainMax: 8 },
 }
+
+// Domain defaults per metric (Y-axis range)
+const METRIC_DOMAINS: Record<string, { min: number; max: number }> = {
+  temperature:   { min: -2,  max: 14 },
+  humidity:      { min: 30,  max: 100 },
+  co2:           { min: 350, max: 2000 },
+  tvoc:          { min: 0,   max: 600 },
+  total_current: { min: 0,   max: 8 },
+}
+
+// Build thresholds from DB alert rules. Groups rules by metric and uses
+// the lower "gt" threshold as warn and the higher one as danger.
+function buildThresholdsFromRules(rules: AlertRule[]): Record<string, Thresholds> {
+  const result: Record<string, Thresholds> = {}
+
+  // Group enabled rules by metric
+  const byMetric = new Map<string, AlertRule[]>()
+  for (const r of rules) {
+    if (!r.enabled || r.metric === 'stale_data' || r.metric === 'energy_spike') continue
+    const list = byMetric.get(r.metric) ?? []
+    list.push(r)
+    byMetric.set(r.metric, list)
+  }
+
+  for (const [metric, metricRules] of byMetric) {
+    const domain = METRIC_DOMAINS[metric] ?? { min: 0, max: 100 }
+    const t: Thresholds = { domainMin: domain.min, domainMax: domain.max }
+
+    // Separate gt (above) and lt (below) rules
+    const gtRules = metricRules.filter(r => r.operator === 'gt').sort((a, b) => a.threshold - b.threshold)
+    const ltRules = metricRules.filter(r => r.operator === 'lt').sort((a, b) => b.threshold - a.threshold)
+
+    // For "gt" rules: lowest threshold = warn, highest = danger
+    if (gtRules.length >= 2) {
+      t.warnAbove   = gtRules[0].threshold
+      t.dangerAbove = gtRules[gtRules.length - 1].threshold
+    } else if (gtRules.length === 1) {
+      t.dangerAbove = gtRules[0].threshold
+    }
+
+    // For "lt" rules: highest threshold = warn, lowest = danger
+    if (ltRules.length >= 2) {
+      t.warnBelow   = ltRules[0].threshold
+      t.dangerBelow = ltRules[ltRules.length - 1].threshold
+    } else if (ltRules.length === 1) {
+      t.dangerBelow = ltRules[0].threshold
+    }
+
+    result[metric] = t
+  }
+
+  return result
+}
+
+// Module-level mutable reference so helper functions can access current thresholds
+let METRIC_THRESHOLDS: Record<string, Thresholds> = FALLBACK_THRESHOLDS
 
 function getRangeStatus(v: number | null, t: Thresholds): 'ok' | 'warn' | 'danger' {
   if (v === null) return 'ok'
@@ -486,8 +544,16 @@ export default function Resumen() {
       setError(null)
       try {
         const { interval, bucket, since } = rangeToParams(range)
-        const [devices, lat] = await Promise.all([fetchDevices(), fetchLatest()])
+        const [devices, lat, alertRules] = await Promise.all([
+          fetchDevices(), fetchLatest(),
+          fetchAlertRules().catch(() => [] as AlertRule[]),
+        ])
         if (cancelled) return
+
+        // Build chart thresholds from DB alert rules
+        if (alertRules.length > 0) {
+          METRIC_THRESHOLDS = buildThresholdsFromRules(alertRules)
+        }
         setLatest(lat)
 
         const map = new Map<string, { am307: Device | null; ct101: Device | null }>()
