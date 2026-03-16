@@ -32,7 +32,7 @@ type Thresholds = {
 // Fallback thresholds used when DB rules are not yet loaded
 const FALLBACK_THRESHOLDS: Record<string, Thresholds> = {
   temperature:   { domainMin: -2,  domainMax: 12,   warnAbove: 4,   dangerAbove: 7 },
-  humidity:      { domainMin: 30,  domainMax: 100,  warnAbove: 95,  warnBelow: 65 },
+  humidity:      { domainMin: 15,  domainMax: 100,  warnAbove: 95,  warnBelow: 40 },
   co2:           { domainMin: 350, domainMax: 2500, warnAbove: 1000, dangerAbove: 2000 },
   tvoc:          { domainMin: 0,   domainMax: 800,  warnAbove: 220, dangerAbove: 660 },
   total_current: { domainMin: 0,   domainMax: 8 },
@@ -41,7 +41,7 @@ const FALLBACK_THRESHOLDS: Record<string, Thresholds> = {
 // Domain defaults per metric (Y-axis range)
 const METRIC_DOMAINS: Record<string, { min: number; max: number }> = {
   temperature:   { min: -2,  max: 12 },
-  humidity:      { min: 30,  max: 100 },
+  humidity:      { min: 15,  max: 100 },
   co2:           { min: 350, max: 2500 },
   tvoc:          { min: 0,   max: 800 },
   total_current: { min: 0,   max: 8 },

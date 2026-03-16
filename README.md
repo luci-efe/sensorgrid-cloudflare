@@ -50,10 +50,10 @@ All thresholds are based on Mexican regulatory norms and international best prac
 
 | Level | Threshold | Source |
 |---|---|---|
-| **Critical (low)** | **< 65 %** | ASHRAE guidelines |
+| **Critical (low)** | **< 40 %** | Adjusted for frost-free refrigerators |
 | **Critical (high)** | **> 95 %** | ASHRAE guidelines |
 
-**Justification**: No specific Mexican norm covers humidity inside commercial refrigerators. ASHRAE (American Society of Heating, Refrigerating and Air-Conditioning Engineers) recommends 80-95% RH for mixed-use commercial refrigerators. Below 65% causes food dehydration; above 95% promotes condensation and mold growth. Source: ASHRAE Fundamentals Handbook.
+**Justification**: No specific Mexican norm covers humidity inside commercial refrigerators. ASHRAE recommends 80-95% RH for mixed-use commercial refrigerators, but frost-free units actively dehumidify the air via their evaporator coils, routinely producing measured RH of 30-50%. Capacitive humidity sensors (such as the AM307's) may also read 5-8% lower than actual at refrigerator temperatures (3-6°C) due to temperature compensation limitations. The low threshold is set at 40% to avoid false alerts from normal frost-free operation while still detecting genuine dehydration conditions. Above 95% promotes condensation and mold growth. Sources: ASHRAE Fundamentals Handbook, GE Appliances technical documentation, Sensirion sensor design guides.
 
 ### CO2
 
