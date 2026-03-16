@@ -102,7 +102,10 @@ async function handleAuthProxy(request: Request, env: Env): Promise<Response> {
     const lower = k.toLowerCase();
     if (lower === 'set-cookie') {
       // Remove Domain so the cookie is scoped to the Worker host instead of .neon.tech
-      const clean = v.replace(/;\s*domain=[^;]*/i, '');
+      let clean = v.replace(/;\s*domain=[^;]*/i, '');
+      // Ensure SameSite=None; Secure for cross-origin mobile browser compatibility
+      clean = clean.replace(/;\s*samesite=[^;]*/i, '');
+      clean += '; SameSite=None; Secure';
       resHeaders.append('Set-Cookie', clean);
     } else if (lower !== 'access-control-allow-origin' && lower !== 'access-control-allow-credentials') {
       resHeaders.set(k, v);
@@ -243,9 +246,110 @@ async function sendTelegramAlert(
   });
 }
 
+// ── Stale data check (cron) ────────────────────────────────────────────────
+
+async function checkStaleDevices(env: Env): Promise<void> {
+  const sql = neon(env.DATABASE_URL);
+
+  // Find devices that haven't sent data in 10+ minutes
+  const staleDevices = await sql`
+    SELECT d.dev_eui, d.name, d.fridge_label,
+           MAX(r.time) AS last_seen
+    FROM devices d
+    LEFT JOIN readings r ON r.dev_eui = d.dev_eui
+    GROUP BY d.dev_eui, d.name, d.fridge_label
+    HAVING MAX(r.time) IS NULL OR MAX(r.time) < NOW() - INTERVAL '10 minutes'
+  `;
+
+  if (staleDevices.length === 0) return;
+
+  // Check if we already sent a stale-data alert recently (within 1 hour) to avoid spam
+  for (const device of staleDevices) {
+    const devEui = String(device['dev_eui']);
+    const recentStaleAlert = await sql`
+      SELECT id FROM alert_events
+      WHERE dev_eui = ${devEui} AND metric = 'stale_data'
+        AND resolved_at IS NULL
+      LIMIT 1
+    `;
+
+    if (recentStaleAlert.length > 0) continue; // already tracked
+
+    // Create alert event for stale data
+    const inserted = await sql`
+      INSERT INTO alert_events (rule_id, dev_eui, metric, value, triggered_at)
+      VALUES (0, ${devEui}, 'stale_data', 0, NOW())
+      RETURNING id, triggered_at
+    `;
+    if (!inserted[0]) continue;
+
+    // Get all enabled alert rules that have tier1 emails configured
+    const emailRules = await sql`
+      SELECT DISTINCT UNNEST(email_tier1) AS email
+      FROM alert_rules WHERE enabled = true AND array_length(email_tier1, 1) > 0
+    `;
+    const emails = emailRules.map(r => String(r['email'])).filter(Boolean);
+    if (emails.length === 0) continue;
+
+    const deviceName = device['name'] ?? devEui;
+    const fridgeLabel = device['fridge_label'] ?? '';
+    const lastSeen = device['last_seen']
+      ? new Date(device['last_seen'] as string).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })
+      : 'nunca';
+
+    const subject = `[ALERTA] Sin datos de ${deviceName}${fridgeLabel ? ` (${fridgeLabel})` : ''}`;
+    const html = `
+      <div style="font-family:sans-serif;max-width:480px;background:#07101f;color:#e8edf5;padding:24px;border-radius:12px;border:1px solid #1a3a5c;">
+        <h2 style="margin:0 0 8px;color:#f59e0b;">📡 Sensor sin datos</h2>
+        <p style="margin:0 0 16px;color:#6b8ab0;font-size:14px;">
+          Un sensor ha dejado de enviar datos al sistema.
+        </p>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+          <tr><td style="padding:6px 0;color:#6b8ab0;">Dispositivo</td><td style="padding:6px 0;font-weight:600;">${deviceName}</td></tr>
+          ${fridgeLabel ? `<tr><td style="padding:6px 0;color:#6b8ab0;">Refrigerador</td><td style="padding:6px 0;">${fridgeLabel}</td></tr>` : ''}
+          <tr><td style="padding:6px 0;color:#6b8ab0;">DEV EUI</td><td style="padding:6px 0;font-family:monospace;">${devEui.toUpperCase()}</td></tr>
+          <tr><td style="padding:6px 0;color:#6b8ab0;">Último dato</td><td style="padding:6px 0;color:#f59e0b;font-weight:700;">${lastSeen}</td></tr>
+        </table>
+        <p style="margin:16px 0 0;font-size:12px;color:#6b8ab0;">Mensaje automático del sistema SensorGrid.</p>
+      </div>`;
+    await sendEmail(emails, subject, html, env);
+
+    // Also send Telegram if configured
+    if (env.TELEGRAM_TOKEN) {
+      const chatRules = await sql`SELECT DISTINCT telegram_chat_id FROM alert_rules WHERE telegram_chat_id IS NOT NULL AND enabled = true`;
+      for (const cr of chatRules) {
+        const chatId = String(cr['telegram_chat_id']);
+        await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: `📡 SensorGrid: Sin datos\nDispositivo: ${deviceName}\nÚltimo dato: ${lastSeen}`,
+          }),
+        });
+      }
+    }
+  }
+
+  // Resolve stale_data alerts for devices that are now sending data again
+  await sql`
+    UPDATE alert_events SET resolved_at = NOW()
+    WHERE metric = 'stale_data' AND resolved_at IS NULL
+      AND dev_eui IN (
+        SELECT dev_eui FROM readings
+        WHERE time > NOW() - INTERVAL '10 minutes'
+      )
+  `;
+}
+
 // ── Worker ─────────────────────────────────────────────────────────────────
 
 export default {
+  // Cron trigger: check for stale devices every 5 minutes
+  async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
+    await checkStaleDevices(env);
+  },
+
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const sql = neon(env.DATABASE_URL);
@@ -380,6 +484,27 @@ export default {
         );
       }
       const authUser = authResult;
+
+      // PATCH /api/alert-rules/bulk-email — set emails for ALL rules at once
+      if (url.pathname === '/api/alert-rules/bulk-email') {
+        if (authUser.role !== 'admin') return new Response('Forbidden', { status: 403, headers: hdrs });
+        const body = await request.json() as {
+          email_tier1?: string[];
+          email_tier2?: string[];
+          email_tier2_delay_min?: number;
+        };
+        if (Array.isArray(body.email_tier1)) {
+          await sql`UPDATE alert_rules SET email_tier1 = ${body.email_tier1 as string[]}`;
+        }
+        if (Array.isArray(body.email_tier2)) {
+          await sql`UPDATE alert_rules SET email_tier2 = ${body.email_tier2 as string[]}`;
+        }
+        if (body.email_tier2_delay_min !== undefined) {
+          await sql`UPDATE alert_rules SET email_tier2_delay_min = ${parseInt(String(body.email_tier2_delay_min), 10)}`;
+        }
+        const rows = await sql`SELECT * FROM alert_rules ORDER BY id`;
+        return new Response(JSON.stringify(rows), { headers: hdrs });
+      }
 
       // PATCH /api/alert-rules/:id
       const ruleMatch = url.pathname.match(/^\/api\/alert-rules\/(\d+)$/);
@@ -551,6 +676,16 @@ export default {
         `;
 
         if (!existing.length) {
+          // Cooldown: don't re-create alert if one was resolved within the last 15 minutes
+          const recentlyResolved = await sql`
+            SELECT id FROM alert_events
+            WHERE rule_id = ${rule.id} AND dev_eui = ${devEui}
+              AND resolved_at IS NOT NULL
+              AND resolved_at > NOW() - INTERVAL '15 minutes'
+            LIMIT 1
+          `;
+          if (recentlyResolved.length > 0) continue;
+
           const inserted = await sql`
             INSERT INTO alert_events (rule_id, dev_eui, metric, value)
             VALUES (${rule.id}, ${devEui}, ${rule.metric}, ${value})

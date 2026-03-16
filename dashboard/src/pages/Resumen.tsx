@@ -1,7 +1,7 @@
 import { useState, useEffect, useId } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, ScatterChart, Scatter,
-  ResponsiveContainer, Tooltip, CartesianGrid,
+  ResponsiveContainer, Tooltip, CartesianGrid, ReferenceArea,
 } from 'recharts'
 import { Thermometer, Droplets, Zap, Wind, FlaskConical, DoorOpen, DoorClosed, RefreshCw } from 'lucide-react'
 import { fetchDevices, fetchLatest, fetchReadings } from '../lib/api'
@@ -139,6 +139,50 @@ function fmtXTick(t: number, range: string): string {
   return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })
 }
 
+// Build ReferenceArea elements for threshold zones
+function buildThresholdAreas(metricKey: string, yDomain: [number | string, number | string]): React.ReactNode[] {
+  const t = METRIC_THRESHOLDS[metricKey]
+  if (!t) return []
+  const areas: React.ReactNode[] = []
+  const yMax = typeof yDomain[1] === 'number' ? yDomain[1] : t.domainMax
+
+  // Danger zone above
+  if (t.dangerAbove !== undefined) {
+    areas.push(
+      <ReferenceArea key="danger-above" y1={t.dangerAbove} y2={yMax}
+        fill="#ef4444" fillOpacity={0.10} stroke="none" />
+    )
+  }
+  // Warn zone above (between warn and danger, or warn to top if no danger)
+  if (t.warnAbove !== undefined) {
+    const warnTop = t.dangerAbove ?? yMax
+    areas.push(
+      <ReferenceArea key="warn-above" y1={t.warnAbove} y2={warnTop}
+        fill="#f59e0b" fillOpacity={0.08} stroke="none" />
+    )
+  }
+
+  const yMin = typeof yDomain[0] === 'number' ? yDomain[0] : t.domainMin
+
+  // Danger zone below
+  if (t.dangerBelow !== undefined) {
+    areas.push(
+      <ReferenceArea key="danger-below" y1={yMin} y2={t.dangerBelow}
+        fill="#ef4444" fillOpacity={0.10} stroke="none" />
+    )
+  }
+  // Warn zone below
+  if (t.warnBelow !== undefined) {
+    const warnBottom = t.dangerBelow ?? yMin
+    areas.push(
+      <ReferenceArea key="warn-below" y1={warnBottom} y2={t.warnBelow}
+        fill="#f59e0b" fillOpacity={0.08} stroke="none" />
+    )
+  }
+
+  return areas
+}
+
 function fmtTooltipTime(t: number, range: string): string {
   const d = new Date(t)
   if (range === 'hoy') return d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -235,6 +279,7 @@ function MetricTile({
           <ResponsiveContainer width="100%" height="100%">
             <ScatterChart margin={{ top: 4, right: 6, bottom: 0, left: -4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1a3a5c" vertical={false} />
+              {buildThresholdAreas(metricKey, yDomain)}
               <XAxis
                 dataKey="t" type="number"
                 domain={['dataMin', 'dataMax']}
@@ -268,6 +313,7 @@ function MetricTile({
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#1a3a5c" vertical={false} />
+              {buildThresholdAreas(metricKey, yDomain)}
               <XAxis
                 dataKey="t" type="number"
                 domain={['dataMin', 'dataMax']}

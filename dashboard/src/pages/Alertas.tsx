@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Bell, CheckCircle, AlertTriangle, AlertCircle, Mail, Pencil, Check, X } from 'lucide-react'
-import { fetchAlertRules, patchAlertRule, fetchAlertEvents } from '../lib/api'
+import { fetchAlertRules, patchAlertRule, patchAlertRulesBulkEmail, fetchAlertEvents } from '../lib/api'
 import type { AlertRule, AlertEvent } from '../lib/api'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -206,6 +206,102 @@ function RuleRow({ rule, onUpdate }: { rule: AlertRule; onUpdate: (updated: Aler
   )
 }
 
+// ── Bulk email panel ────────────────────────────────────────────────────────
+function BulkEmailPanel({ onApply }: { onApply: (rules: AlertRule[]) => void }) {
+  const [open, setOpen]     = useState(false)
+  const [tier1, setTier1]   = useState('')
+  const [tier2, setTier2]   = useState('')
+  const [delay, setDelay]   = useState('30')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved]   = useState(false)
+
+  async function handleApply() {
+    setSaving(true)
+    setSaved(false)
+    try {
+      const updates: Record<string, unknown> = {}
+      const t1 = tier1.split(',').map(s => s.trim()).filter(Boolean)
+      const t2 = tier2.split(',').map(s => s.trim()).filter(Boolean)
+      if (t1.length > 0) updates.email_tier1 = t1
+      if (t2.length > 0) updates.email_tier2 = t2
+      if (delay) updates.email_tier2_delay_min = parseInt(delay, 10)
+      const updatedRules = await patchAlertRulesBulkEmail(updates as any)
+      onApply(updatedRules)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border p-4 mb-4"
+      style={{ background: 'var(--surface2)', borderColor: 'var(--border)' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 w-full text-left text-sm font-semibold"
+        style={{ color: 'var(--text)' }}
+      >
+        <Mail size={14} style={{ color: 'var(--accent)' }} />
+        Configurar correo para todas las alertas
+        <span className="ml-auto text-xs" style={{ color: 'var(--muted)' }}>{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div className="mt-4 flex flex-col gap-3">
+          <p className="text-xs" style={{ color: 'var(--muted)' }}>
+            Aplica las mismas direcciones de correo a <strong>todas</strong> las reglas de alerta. Los campos vacíos no se modificarán.
+          </p>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--muted)' }}>
+              Nivel 1 — alerta inmediata (separar con comas)
+            </label>
+            <input
+              value={tier1} onChange={e => setTier1(e.target.value)}
+              placeholder="correo@ejemplo.com, otro@ejemplo.com"
+              className="w-full px-2 py-1.5 rounded-lg border text-xs"
+              style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+            />
+          </div>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--muted)' }}>
+              Nivel 2 — escalamiento (separar con comas)
+            </label>
+            <input
+              value={tier2} onChange={e => setTier2(e.target.value)}
+              placeholder="supervisor@ejemplo.com"
+              className="w-full px-2 py-1.5 rounded-lg border text-xs"
+              style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs" style={{ color: 'var(--muted)' }}>Escalar después de</label>
+            <input
+              type="number" value={delay} onChange={e => setDelay(e.target.value)}
+              className="w-16 px-2 py-1 rounded border text-xs"
+              style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+            />
+            <span className="text-xs" style={{ color: 'var(--muted)' }}>minutos</span>
+          </div>
+          <button
+            onClick={handleApply}
+            disabled={saving || (!tier1.trim() && !tier2.trim())}
+            className="self-start px-4 py-1.5 rounded-lg text-xs font-semibold"
+            style={{
+              background: saving ? 'var(--border)' : '#1d4ed8',
+              color: saving ? 'var(--muted)' : '#fff',
+              cursor: saving || (!tier1.trim() && !tier2.trim()) ? 'not-allowed' : 'pointer',
+              opacity: !tier1.trim() && !tier2.trim() ? 0.5 : 1,
+            }}
+          >
+            {saving ? 'Aplicando…' : saved ? '✓ Aplicado' : 'Aplicar a todas las reglas'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main page ──────────────────────────────────────────────────────────────
 export default function Alertas() {
   const [tab, setTab]       = useState<'estado' | 'reglas' | 'historial'>('estado')
@@ -346,6 +442,7 @@ export default function Alertas() {
           {/* ── Reglas ──────────────────────────────────────────────────── */}
           {tab === 'reglas' && (
             <div className="flex flex-col gap-3">
+              <BulkEmailPanel onApply={updatedRules => setRules(updatedRules)} />
               <p className="text-xs" style={{ color: 'var(--muted)' }}>
                 Configura los umbrales y destinatarios de correo para cada tipo de alerta.
                 <br />Nivel 1 recibe la alerta de inmediato; Nivel 2 la recibe si la alerta persiste.

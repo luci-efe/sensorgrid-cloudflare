@@ -39,7 +39,7 @@ export default function Login() {
       >
         {/* Logo + heading */}
         <div className="flex flex-col items-center gap-3">
-          <img src="/logo.png" alt="SensorGrid" className="h-12 w-auto rounded-lg" />
+          <img src="/logo.png" alt="SensorGrid" className="h-20 w-auto rounded-lg" />
           <div className="text-center">
             <h1 className="text-xl font-bold" style={{ color: 'var(--text)' }}>
               Iniciar sesión

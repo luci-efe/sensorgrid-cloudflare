@@ -88,7 +88,7 @@ function MobileMenu({ onClose }: { onClose: () => void }) {
       style={{ background: 'var(--bg)' }}
     >
       <div className="flex items-center justify-between px-4 h-14 border-b" style={{ borderColor: 'var(--border)' }}>
-        <img src="/logo.png" alt="SensorGrid" className="h-7 w-auto rounded" />
+        <img src="/logo.png" alt="SensorGrid" className="h-10 w-auto rounded" />
         <button onClick={onClose}><X size={20} style={{ color: 'var(--muted)' }} /></button>
       </div>
       <nav className="flex flex-col p-4 gap-1">
@@ -126,7 +126,7 @@ function PendingApprovalScreen({ onRecheck }: { onRecheck: () => void }) {
         className="w-full max-w-sm rounded-2xl border p-8 flex flex-col items-center gap-5 text-center"
         style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
       >
-        <img src="/logo.png" alt="SensorGrid" className="h-12 w-auto rounded-lg" />
+        <img src="/logo.png" alt="SensorGrid" className="h-20 w-auto rounded-lg" />
         <Clock size={40} color="#f59e0b" />
         <div>
           <h2 className="text-lg font-bold" style={{ color: 'var(--text)' }}>
@@ -215,7 +215,7 @@ function AppShell() {
         </button>
 
         <NavLink to="/" className="mr-auto flex items-center">
-          <img src="/logo.png" alt="SensorGrid" className="h-7 w-auto rounded" />
+          <img src="/logo.png" alt="SensorGrid" className="h-10 w-auto rounded" />
         </NavLink>
 
         {/* Desktop nav links */}

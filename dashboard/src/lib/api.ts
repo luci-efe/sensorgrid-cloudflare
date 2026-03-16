@@ -118,6 +118,14 @@ export async function patchAlertRule(id: number, updates: Partial<AlertRule>): P
 	return patch<AlertRule>(`/api/alert-rules/${id}`, updates);
 }
 
+export async function patchAlertRulesBulkEmail(updates: {
+	email_tier1?: string[];
+	email_tier2?: string[];
+	email_tier2_delay_min?: number;
+}): Promise<AlertRule[]> {
+	return patch<AlertRule[]>('/api/alert-rules/bulk-email', updates);
+}
+
 // ── Alert events ───────────────────────────────────────────────────────────
 
 export async function fetchAlertEvents(limit = 50): Promise<AlertEvent[]> {
