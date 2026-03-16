@@ -182,14 +182,14 @@ async function sendEmail(to: string[], subject: string, html: string, env: Env):
 }
 
 function alertEmailHtml(opts: {
-  ruleName: string; devEui: string; metric: string; value: number;
+  ruleName: string; devEui: string; deviceName: string; metric: string; value: number;
   threshold: number; operator: string; tier: 1 | 2; triggeredAt: string;
 }): { subject: string; html: string } {
-  const { ruleName, devEui, metric, value, threshold, operator, tier, triggeredAt } = opts;
+  const { ruleName, deviceName, metric, value, threshold, operator, tier, triggeredAt } = opts;
   const opLabel = operator === 'gt' ? '>' : operator === 'lt' ? '<' : '=';
   const subject = tier === 2
-    ? `[ESCALAMIENTO] Alerta persistente: ${ruleName}`
-    : `[ALERTA] ${ruleName}`;
+    ? `[ESCALAMIENTO] Alerta persistente: ${ruleName} — ${deviceName}`
+    : `[ALERTA] ${ruleName} — ${deviceName}`;
   const html = `
     <div style="font-family:sans-serif;max-width:480px;background:#07101f;color:#e8edf5;padding:24px;border-radius:12px;border:1px solid #1a3a5c;">
       <h2 style="margin:0 0 8px;color:#ef4444;">${tier === 2 ? '🚨 Alerta persistente' : '⚠️ Nueva alerta'}</h2>
@@ -198,7 +198,7 @@ function alertEmailHtml(opts: {
       </p>
       <table style="width:100%;border-collapse:collapse;font-size:14px;">
         <tr><td style="padding:6px 0;color:#6b8ab0;">Regla</td><td style="padding:6px 0;font-weight:600;">${ruleName}</td></tr>
-        <tr><td style="padding:6px 0;color:#6b8ab0;">Dispositivo</td><td style="padding:6px 0;font-family:monospace;">${devEui.toUpperCase()}</td></tr>
+        <tr><td style="padding:6px 0;color:#6b8ab0;">Dispositivo</td><td style="padding:6px 0;font-weight:600;">${deviceName}</td></tr>
         <tr><td style="padding:6px 0;color:#6b8ab0;">Métrica</td><td style="padding:6px 0;">${metric}</td></tr>
         <tr><td style="padding:6px 0;color:#6b8ab0;">Valor</td><td style="padding:6px 0;color:#ef4444;font-weight:700;">${value.toFixed(2)}</td></tr>
         <tr><td style="padding:6px 0;color:#6b8ab0;">Umbral</td><td style="padding:6px 0;">${opLabel} ${threshold}</td></tr>
@@ -607,6 +607,12 @@ export default {
       )
     `;
 
+    // Look up device name for friendly alert labels
+    const deviceRows = await sql`SELECT name, fridge_label FROM devices WHERE dev_eui = ${devEui} LIMIT 1`;
+    const deviceName = deviceRows[0]
+      ? `${deviceRows[0]['name']}${deviceRows[0]['fridge_label'] ? ` (${deviceRows[0]['fridge_label']})` : ''}`
+      : devEui.toUpperCase();
+
     // Evaluate alert rules
     const rules = await sql`
       SELECT * FROM alert_rules
@@ -681,7 +687,7 @@ export default {
 
           if ((rule.email_tier1 as string[])?.length > 0) {
             const { subject, html } = alertEmailHtml({
-              ruleName: String(rule.name ?? rule.metric), devEui, metric: String(rule.metric),
+              ruleName: String(rule.name ?? rule.metric), devEui, deviceName, metric: String(rule.metric),
               value, threshold: Number(rule.threshold), operator: String(rule.operator),
               tier: 1, triggeredAt: triggeredAt2,
             });
@@ -696,7 +702,7 @@ export default {
 
           if (!ev['tier2_sent_at'] && ageMin >= delayMin && (rule.email_tier2 as string[])?.length > 0) {
             const { subject, html } = alertEmailHtml({
-              ruleName: String(rule.name ?? rule.metric), devEui, metric: String(rule.metric),
+              ruleName: String(rule.name ?? rule.metric), devEui, deviceName, metric: String(rule.metric),
               value, threshold: Number(rule.threshold), operator: String(rule.operator),
               tier: 2, triggeredAt: ev['triggered_at'] as string,
             });

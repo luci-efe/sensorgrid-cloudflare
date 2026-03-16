@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Bell, CheckCircle, AlertTriangle, AlertCircle, Mail, Pencil, Check, X, RefreshCw } from 'lucide-react'
-import { fetchAlertRules, patchAlertRule, patchAlertRulesBulkEmail, fetchAlertEvents } from '../lib/api'
+import { fetchAlertRules, patchAlertRule, patchAlertRulesBulkEmail, fetchAlertEvents, fetchDevices } from '../lib/api'
 import type { AlertRule, AlertEvent } from '../lib/api'
+import type { Device } from '../lib/mock'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 const METRIC_LABELS: Record<string, string> = {
@@ -309,13 +310,22 @@ export default function Alertas() {
   const [events, setEvents] = useState<AlertEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [devices, setDevices] = useState<Device[]>([])
+
+  // Map dev_eui to friendly display name
+  function deviceLabel(devEui: string): string {
+    const d = devices.find(d => d.dev_eui === devEui)
+    if (!d) return devEui.toUpperCase()
+    return d.fridge_label ? `${d.name} (${d.fridge_label})` : d.name
+  }
 
   useEffect(() => {
     async function load() {
       if (events.length === 0) setLoading(true)
-      const [r, e] = await Promise.allSettled([fetchAlertRules(), fetchAlertEvents(100)])
+      const [r, e, devs] = await Promise.allSettled([fetchAlertRules(), fetchAlertEvents(100), fetchDevices()])
       setRules(r.status === 'fulfilled' ? r.value : [])
       setEvents(e.status === 'fulfilled' ? e.value : [])
+      if (devs.status === 'fulfilled') setDevices(devs.value)
       setLoading(false)
     }
     load()
@@ -404,7 +414,7 @@ export default function Alertas() {
                       <StatusBadge resolved={false} />
                     </div>
                     <div className="text-xs flex flex-wrap gap-x-4 gap-y-1" style={{ color: 'var(--muted)' }}>
-                      <span>Dispositivo: <strong style={{ color: 'var(--text)' }}>{ev.dev_eui.toUpperCase()}</strong></span>
+                      <span>Dispositivo: <strong style={{ color: 'var(--text)' }}>{deviceLabel(ev.dev_eui)}</strong></span>
                       <span>Valor: <strong style={{ color: 'var(--danger)' }}>{ev.value.toFixed(1)} {METRIC_UNITS[ev.metric] ?? ''}</strong></span>
                       <span>Desde: {fmtRelative(ev.triggered_at)}</span>
                     </div>
@@ -504,7 +514,7 @@ export default function Alertas() {
                             {ev.rule_name ?? METRIC_LABELS[ev.metric] ?? ev.metric}
                           </td>
                           <td className="px-3 py-2 font-mono" style={{ color: 'var(--muted)' }}>
-                            {ev.dev_eui.toUpperCase().slice(-6)}
+                            {deviceLabel(ev.dev_eui)}
                           </td>
                           <td className="px-3 py-2 tabular-nums" style={{ color: ev.resolved_at ? 'var(--muted)' : 'var(--danger)' }}>
                             {ev.value.toFixed(1)} {METRIC_UNITS[ev.metric] ?? ''}
