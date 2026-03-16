@@ -625,6 +625,23 @@ export default {
         const avg = parseFloat(avgRows[0]?.avg_val ?? '0');
         value = avg > 0 ? decoded.total_current / avg : undefined;
         if (value === undefined) continue;
+      } else if (rule.metric === 'light_level') {
+        // Door open detection: only trigger if ALL recent readings (last 10 min)
+        // show light_level above threshold (sustained open, not momentary)
+        if (decoded.light_level == null) continue;
+        const recentRows = await sql`
+          SELECT light_level FROM readings
+          WHERE dev_eui = ${devEui} AND time > NOW() - INTERVAL '10 minutes'
+            AND light_level IS NOT NULL
+          ORDER BY time DESC LIMIT 3
+        `;
+        // Need at least 2 consecutive readings above threshold
+        if (recentRows.length < 2) continue;
+        const allAbove = recentRows.every(
+          (r: Record<string, unknown>) => Number(r['light_level']) > rule.threshold,
+        );
+        value = allAbove ? decoded.light_level : undefined;
+        if (value === undefined) continue;
       } else {
         value = decoded[rule.metric as keyof typeof decoded] as number | undefined;
         if (value === undefined) continue;

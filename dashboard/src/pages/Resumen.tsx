@@ -31,19 +31,19 @@ type Thresholds = {
 
 // Fallback thresholds used when DB rules are not yet loaded
 const FALLBACK_THRESHOLDS: Record<string, Thresholds> = {
-  temperature:   { domainMin: -2,  domainMax: 14,   warnAbove: 6,   dangerAbove: 8 },
-  humidity:      { domainMin: 30,  domainMax: 100,  warnAbove: 85,  warnBelow: 50 },
-  co2:           { domainMin: 350, domainMax: 2000, warnAbove: 800, dangerAbove: 1200 },
-  tvoc:          { domainMin: 0,   domainMax: 600,  warnAbove: 150, dangerAbove: 500 },
+  temperature:   { domainMin: -2,  domainMax: 12,   warnAbove: 4,   dangerAbove: 7 },
+  humidity:      { domainMin: 30,  domainMax: 100,  warnAbove: 95,  warnBelow: 65 },
+  co2:           { domainMin: 350, domainMax: 2500, warnAbove: 1000, dangerAbove: 2000 },
+  tvoc:          { domainMin: 0,   domainMax: 800,  warnAbove: 220, dangerAbove: 660 },
   total_current: { domainMin: 0,   domainMax: 8 },
 }
 
 // Domain defaults per metric (Y-axis range)
 const METRIC_DOMAINS: Record<string, { min: number; max: number }> = {
-  temperature:   { min: -2,  max: 14 },
+  temperature:   { min: -2,  max: 12 },
   humidity:      { min: 30,  max: 100 },
-  co2:           { min: 350, max: 2000 },
-  tvoc:          { min: 0,   max: 600 },
+  co2:           { min: 350, max: 2500 },
+  tvoc:          { min: 0,   max: 800 },
   total_current: { min: 0,   max: 8 },
 }
 
@@ -142,21 +142,21 @@ function rangeToParams(range: string): { interval: string; bucket: string; since
 function tempColor(t: number | null | undefined): string {
   if (t == null) return 'var(--text)'
   if (t <= 4) return 'var(--cold)'
-  if (t <= 6) return 'var(--warning)'
+  if (t <= 7) return 'var(--warning)'
   return 'var(--danger)'
 }
 
 function co2Color(v: number | null | undefined): string {
   if (v == null) return 'var(--text)'
-  if (v < 800)   return 'var(--success)'
-  if (v < 1200)  return 'var(--warning)'
+  if (v < 1000)  return 'var(--success)'
+  if (v < 2000)  return 'var(--warning)'
   return 'var(--danger)'
 }
 
 function tvocColor(v: number | null | undefined): string {
   if (v == null) return 'var(--text)'
-  if (v < 150) return 'var(--success)'
-  if (v < 500) return 'var(--warning)'
+  if (v < 220) return 'var(--success)'
+  if (v < 660) return 'var(--warning)'
   return 'var(--danger)'
 }
 
