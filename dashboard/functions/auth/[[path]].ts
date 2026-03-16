@@ -1,16 +1,25 @@
 // Cloudflare Pages Function: proxies /auth/* to the Worker's /auth/* endpoint.
 // This makes auth cookies same-origin (sensorgrid.site), fixing mobile Safari
 // which blocks third-party cookies from the Worker's different domain.
+//
+// Set WORKER_URL in Cloudflare Pages > Settings > Environment Variables.
 
-const WORKER_URL = 'https://sensorgrid-ingest.lfernando-rramos.workers.dev';
+interface Env {
+  WORKER_URL: string;
+}
 
-export const onRequest: PagesFunction = async (context) => {
+export const onRequest: PagesFunction<Env> = async (context) => {
+  const workerUrl = context.env.WORKER_URL;
+  if (!workerUrl) {
+    return new Response('WORKER_URL environment variable not set', { status: 500 });
+  }
+
   const url = new URL(context.request.url);
-  const targetUrl = `${WORKER_URL}${url.pathname}${url.search}`;
+  const targetUrl = `${workerUrl}${url.pathname}${url.search}`;
 
   const headers = new Headers(context.request.headers);
   // Set Origin to the worker's origin so it passes CORS checks
-  headers.set('Origin', WORKER_URL);
+  headers.set('Origin', workerUrl);
 
   const res = await fetch(targetUrl, {
     method: context.request.method,

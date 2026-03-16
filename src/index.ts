@@ -426,7 +426,7 @@ export default {
           return new Response('Forbidden', { status: 403, headers: hdrs });
         const rows = await sql`
           SELECT u.id, u.name, u.email, u.role, u."emailVerified", u."createdAt",
-                 COALESCE(ua.status, 'approved') AS approval_status,
+                 COALESCE(ua.status, CASE WHEN u.role = 'admin' THEN 'approved' ELSE 'pending' END) AS approval_status,
                  ua.approved_at, ua.rejected_reason
           FROM neon_auth.user u
           LEFT JOIN user_approvals ua ON ua.user_id = u.id
@@ -554,7 +554,7 @@ export default {
 
         const rows = await sql`
           SELECT u.id, u.name, u.email, u.role, u."emailVerified", u."createdAt",
-                 COALESCE(ua.status, 'approved') AS approval_status,
+                 COALESCE(ua.status, CASE WHEN u.role = 'admin' THEN 'approved' ELSE 'pending' END) AS approval_status,
                  ua.approved_at, ua.rejected_reason
           FROM neon_auth.user u
           LEFT JOIN user_approvals ua ON ua.user_id = u.id
