@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bell, CheckCircle, AlertTriangle, AlertCircle, Mail, Pencil, Check, X } from 'lucide-react'
+import { Bell, CheckCircle, AlertTriangle, AlertCircle, Mail, Pencil, Check, X, RefreshCw } from 'lucide-react'
 import { fetchAlertRules, patchAlertRule, patchAlertRulesBulkEmail, fetchAlertEvents } from '../lib/api'
 import type { AlertRule, AlertEvent } from '../lib/api'
 
@@ -308,6 +308,7 @@ export default function Alertas() {
   const [rules, setRules]   = useState<AlertRule[]>([])
   const [events, setEvents] = useState<AlertEvent[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     async function load() {
@@ -320,7 +321,7 @@ export default function Alertas() {
     load()
     const id = setInterval(load, 60_000)
     return () => clearInterval(id)
-  }, [])
+  }, [refreshKey])
 
   const activeEvents   = events.filter(e => !e.resolved_at)
   const resolvedEvents = events.filter(e => !!e.resolved_at)
@@ -336,6 +337,16 @@ export default function Alertas() {
     <div>
       <div className="flex flex-wrap items-center gap-4 mb-6">
         <h1 className="text-xl font-bold" style={{ color: 'var(--text)' }}>Alertas</h1>
+        <button
+          onClick={() => setRefreshKey(k => k + 1)}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium"
+          style={{ color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border)', cursor: loading ? 'not-allowed' : 'pointer' }}
+          title="Actualizar datos"
+        >
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+          {loading ? '' : 'Actualizar'}
+        </button>
 
         {/* Active count badge */}
         {activeEvents.length > 0 && (

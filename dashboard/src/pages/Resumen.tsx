@@ -621,7 +621,16 @@ export default function Resumen() {
             </button>
           ))}
         </div>
-        {loading && <RefreshCw size={14} className="animate-spin" style={{ color: 'var(--muted)' }} />}
+        <button
+          onClick={() => setRefreshKey(k => k + 1)}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium"
+          style={{ color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border)', cursor: loading ? 'not-allowed' : 'pointer' }}
+          title="Actualizar datos"
+        >
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+          {loading ? '' : 'Actualizar'}
+        </button>
       </div>
 
       {error && (
