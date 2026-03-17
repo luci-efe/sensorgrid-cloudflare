@@ -607,6 +607,12 @@ export default {
       )
     `;
 
+    // Device just sent data → resolve any open stale_data alerts immediately
+    await sql`
+      UPDATE alert_events SET resolved_at = NOW()
+      WHERE dev_eui = ${devEui} AND metric = 'stale_data' AND resolved_at IS NULL
+    `;
+
     // Look up device name for friendly alert labels
     const deviceRows = await sql`SELECT name, fridge_label FROM devices WHERE dev_eui = ${devEui} LIMIT 1`;
     const deviceName = deviceRows[0]
@@ -620,6 +626,9 @@ export default {
     `;
 
     for (const rule of rules) {
+      // stale_data is handled by the cron job, not ingest payload evaluation
+      if (rule.metric === 'stale_data') continue;
+
       let value: number | undefined;
 
       if (rule.metric === 'energy_spike') {
