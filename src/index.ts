@@ -361,13 +361,13 @@ export default {
           ? await sql`
               SELECT
                 time_bucket(${bucket}::interval, time) AS bucket, dev_eui,
-                ROUND(AVG(laeq)::numeric, 2) AS laeq, ROUND(MAX(lamax)::numeric, 2) AS lamax,
-                ROUND(AVG(temperature)::numeric, 2) AS temperature, ROUND(AVG(humidity)::numeric, 2) AS humidity,
-                ROUND(AVG(pm25)::numeric, 2) AS pm25, ROUND(AVG(pm10)::numeric, 2) AS pm10, ROUND(AVG(voc_index)::numeric, 0) AS voc_index,
-                ROUND(AVG(current)::numeric, 3) AS current, ROUND(AVG(total_current)::numeric, 3) AS total_current,
-                ROUND(MIN(battery)::numeric, 1) AS battery, BOOL_OR(door_open) AS door_open,
-                ROUND(AVG(co2)::numeric, 0) AS co2, ROUND(AVG(tvoc)::numeric, 0) AS tvoc, ROUND(AVG(pressure)::numeric, 1) AS pressure,
-                ROUND(AVG(light_level)::numeric, 1) AS light_level, BOOL_OR(pir) AS pir
+                ROUND(AVG(laeq)::numeric, 2)::float8 AS laeq, ROUND(MAX(lamax)::numeric, 2)::float8 AS lamax,
+                ROUND(AVG(temperature)::numeric, 2)::float8 AS temperature, ROUND(AVG(humidity)::numeric, 2)::float8 AS humidity,
+                ROUND(AVG(pm25)::numeric, 2)::float8 AS pm25, ROUND(AVG(pm10)::numeric, 2)::float8 AS pm10, ROUND(AVG(voc_index)::numeric, 0)::float8 AS voc_index,
+                ROUND(AVG(current)::numeric, 3)::float8 AS current, ROUND(AVG(total_current)::numeric, 3)::float8 AS total_current,
+                ROUND(MIN(battery)::numeric, 1)::float8 AS battery, BOOL_OR(door_open) AS door_open,
+                ROUND(AVG(co2)::numeric, 0)::float8 AS co2, ROUND(AVG(tvoc)::numeric, 0)::float8 AS tvoc, ROUND(AVG(pressure)::numeric, 1)::float8 AS pressure,
+                ROUND(AVG(light_level)::numeric, 1)::float8 AS light_level, BOOL_OR(pir) AS pir
               FROM readings
               WHERE time >= ${since}::timestamptz AND dev_eui = ${devEui}
               GROUP BY bucket, dev_eui ORDER BY bucket ASC
@@ -375,13 +375,13 @@ export default {
           : await sql`
               SELECT
                 time_bucket(${bucket}::interval, time) AS bucket, dev_eui,
-                ROUND(AVG(laeq)::numeric, 2) AS laeq, ROUND(MAX(lamax)::numeric, 2) AS lamax,
-                ROUND(AVG(temperature)::numeric, 2) AS temperature, ROUND(AVG(humidity)::numeric, 2) AS humidity,
-                ROUND(AVG(pm25)::numeric, 2) AS pm25, ROUND(AVG(pm10)::numeric, 2) AS pm10, ROUND(AVG(voc_index)::numeric, 0) AS voc_index,
-                ROUND(AVG(current)::numeric, 3) AS current, ROUND(AVG(total_current)::numeric, 3) AS total_current,
-                ROUND(MIN(battery)::numeric, 1) AS battery, BOOL_OR(door_open) AS door_open,
-                ROUND(AVG(co2)::numeric, 0) AS co2, ROUND(AVG(tvoc)::numeric, 0) AS tvoc, ROUND(AVG(pressure)::numeric, 1) AS pressure,
-                ROUND(AVG(light_level)::numeric, 1) AS light_level, BOOL_OR(pir) AS pir
+                ROUND(AVG(laeq)::numeric, 2)::float8 AS laeq, ROUND(MAX(lamax)::numeric, 2)::float8 AS lamax,
+                ROUND(AVG(temperature)::numeric, 2)::float8 AS temperature, ROUND(AVG(humidity)::numeric, 2)::float8 AS humidity,
+                ROUND(AVG(pm25)::numeric, 2)::float8 AS pm25, ROUND(AVG(pm10)::numeric, 2)::float8 AS pm10, ROUND(AVG(voc_index)::numeric, 0)::float8 AS voc_index,
+                ROUND(AVG(current)::numeric, 3)::float8 AS current, ROUND(AVG(total_current)::numeric, 3)::float8 AS total_current,
+                ROUND(MIN(battery)::numeric, 1)::float8 AS battery, BOOL_OR(door_open) AS door_open,
+                ROUND(AVG(co2)::numeric, 0)::float8 AS co2, ROUND(AVG(tvoc)::numeric, 0)::float8 AS tvoc, ROUND(AVG(pressure)::numeric, 1)::float8 AS pressure,
+                ROUND(AVG(light_level)::numeric, 1)::float8 AS light_level, BOOL_OR(pir) AS pir
               FROM readings
               WHERE time > NOW() - ${interval}::interval AND dev_eui = ${devEui}
               GROUP BY bucket, dev_eui ORDER BY bucket ASC

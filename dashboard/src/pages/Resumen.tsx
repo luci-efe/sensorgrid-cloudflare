@@ -187,8 +187,9 @@ function countDoorOpens(readings: Reading[]): number {
 function toChartData(readings: Reading[], key: keyof Reading): ChartPoint[] {
   return readings
     .map(r => {
-      const raw = r[key] as number | null
-      return { v: raw !== null ? Math.round(raw * 100) / 100 : null, t: new Date(r.bucket).getTime() }
+      const raw = r[key]
+      const num = raw !== null && raw !== undefined ? Number(raw) : null
+      return { v: num !== null && !isNaN(num) ? Math.round(num * 100) / 100 : null, t: new Date(r.bucket).getTime() }
     })
     .sort((a, b) => a.t - b.t)
 }
