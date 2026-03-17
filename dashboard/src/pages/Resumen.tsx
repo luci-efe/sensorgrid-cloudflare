@@ -360,7 +360,10 @@ function MetricTile({
               />
               <Tooltip
                 contentStyle={{ background: '#0c1a2e', border: '1px solid #1a3a5c', borderRadius: 8, fontSize: 12, padding: '6px 10px' }}
-                formatter={(v: unknown) => [`${(v as number)?.toFixed(decimals)}${unit ? ` ${unit}` : ''}`, label]}
+                formatter={(v: unknown, name: string) => {
+                  if (name === 't') return [null, null] // hide timestamp row
+                  return [`${(v as number)?.toFixed(decimals)}${unit ? ` ${unit}` : ''}`, label]
+                }}
                 labelFormatter={t => fmtTooltipTime(t as number, range)}
               />
             </ScatterChart>
