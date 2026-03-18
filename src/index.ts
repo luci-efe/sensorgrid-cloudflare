@@ -246,17 +246,28 @@ async function checkStaleDevices(env: Env): Promise<void> {
 
   if (staleDevices.length === 0) return;
 
-  // Check if we already sent a stale-data alert recently (within 1 hour) to avoid spam
+  // Check if we already sent a stale-data alert recently to avoid spam
   for (const device of staleDevices) {
     const devEui = String(device['dev_eui']);
-    const recentStaleAlert = await sql`
+
+    // Skip if there's already an unresolved alert for this device
+    const unresolvedAlert = await sql`
       SELECT id FROM alert_events
       WHERE dev_eui = ${devEui} AND metric = 'stale_data'
         AND resolved_at IS NULL
       LIMIT 1
     `;
+    if (unresolvedAlert.length > 0) continue;
 
-    if (recentStaleAlert.length > 0) continue; // already tracked
+    // Cooldown: skip if a stale_data alert was created in the last hour
+    // (prevents spam when sensor is flaky — briefly reconnects then drops again)
+    const recentAlert = await sql`
+      SELECT id FROM alert_events
+      WHERE dev_eui = ${devEui} AND metric = 'stale_data'
+        AND triggered_at > NOW() - INTERVAL '1 hour'
+      LIMIT 1
+    `;
+    if (recentAlert.length > 0) continue;
 
     // Create alert event for stale data
     const inserted = await sql`
