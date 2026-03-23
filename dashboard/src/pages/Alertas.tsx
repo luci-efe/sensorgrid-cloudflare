@@ -50,12 +50,12 @@ function fmtDate(ts: string): string {
 function StatusBadge({ resolved }: { resolved: boolean }) {
   return resolved ? (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
-      style={{ background: '#052a14', color: 'var(--success)' }}>
+      style={{ background: 'var(--success-bg)', color: 'var(--success)' }}>
       <CheckCircle size={10} /> Resuelta
     </span>
   ) : (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
-      style={{ background: '#2a1200', color: 'var(--danger)' }}>
+      style={{ background: 'var(--warning-bg)', color: 'var(--danger)' }}>
       <AlertCircle size={10} /> Activa
     </span>
   )
@@ -127,7 +127,7 @@ function RuleRow({ rule, onUpdate }: { rule: AlertRule; onUpdate: (updated: Aler
             onClick={toggleEnabled}
             className="px-2 py-0.5 rounded-full text-xs font-medium border"
             style={enabled
-              ? { borderColor: 'var(--success)', color: 'var(--success)', background: '#052a14' }
+              ? { borderColor: 'var(--success)', color: 'var(--success)', background: 'var(--success-bg)' }
               : { borderColor: 'var(--border)', color: 'var(--muted)' }}
           >
             {enabled ? 'Activa' : 'Inactiva'}
@@ -136,7 +136,7 @@ function RuleRow({ rule, onUpdate }: { rule: AlertRule; onUpdate: (updated: Aler
           {editing ? (
             <div className="flex gap-1">
               <button onClick={save} disabled={saving}
-                className="p-1.5 rounded-lg" style={{ background: '#052a14', color: 'var(--success)' }}>
+                className="p-1.5 rounded-lg" style={{ background: 'var(--success-bg)', color: 'var(--success)' }}>
                 <Check size={13} />
               </button>
               <button onClick={() => setEditing(false)}
@@ -289,7 +289,7 @@ function BulkEmailPanel({ onApply }: { onApply: (rules: AlertRule[]) => void }) 
             disabled={saving || (!tier1.trim() && !tier2.trim())}
             className="self-start px-4 py-1.5 rounded-lg text-xs font-semibold"
             style={{
-              background: saving ? 'var(--border)' : '#1d4ed8',
+              background: saving ? 'var(--border)' : 'var(--primary)',
               color: saving ? 'var(--muted)' : '#fff',
               cursor: saving || (!tier1.trim() && !tier2.trim()) ? 'not-allowed' : 'pointer',
               opacity: !tier1.trim() && !tier2.trim() ? 0.5 : 1,
@@ -340,7 +340,7 @@ export default function Alertas() {
     `px-4 py-2 text-sm font-medium rounded-lg ${tab === t ? 'text-white' : ''}`
   const tabStyle = (t: typeof tab) =>
     tab === t
-      ? { background: '#1d4ed8', color: '#fff' }
+      ? { background: 'var(--primary)', color: '#fff' }
       : { color: 'var(--muted)' }
 
   return (
@@ -361,7 +361,7 @@ export default function Alertas() {
         {/* Active count badge */}
         {activeEvents.length > 0 && (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold"
-            style={{ background: '#3b0a0a', color: 'var(--danger)' }}>
+            style={{ background: 'var(--error-bg-deep)', color: 'var(--danger)' }}>
             <AlertCircle size={11} />
             {activeEvents.length} alerta{activeEvents.length !== 1 ? 's' : ''} activa{activeEvents.length !== 1 ? 's' : ''}
           </span>
@@ -403,7 +403,7 @@ export default function Alertas() {
               ) : (
                 activeEvents.map(ev => (
                   <div key={ev.id} className="rounded-xl border p-4 flex flex-col gap-2"
-                    style={{ background: '#1a0808', borderColor: 'var(--danger)' }}>
+                    style={{ background: 'var(--danger-surface)', borderColor: 'var(--danger)' }}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <AlertTriangle size={15} color="var(--danger)" />

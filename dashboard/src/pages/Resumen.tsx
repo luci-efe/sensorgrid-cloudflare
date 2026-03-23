@@ -314,7 +314,7 @@ function MetricTile({
   })()
 
   const rangeBars = computeRangeBars(data, metricKey)
-  const tickStyle = { fontSize: 10, fill: '#6b8ab0' }
+  const tickStyle = { fontSize: 10, fill: 'var(--muted)' }
 
   return (
     <div
@@ -340,7 +340,7 @@ function MetricTile({
           /* Sparse data: show scatter dots instead of area */
           <ResponsiveContainer width="100%" height="100%">
             <ScatterChart margin={{ top: 4, right: 6, bottom: 0, left: -4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1a3a5c" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               {buildThresholdAreas(metricKey, yDomain)}
               <XAxis
                 dataKey="t" type="number"
@@ -359,7 +359,7 @@ function MetricTile({
                 shape={(props: any) => <circle cx={props.cx} cy={props.cy} r={6} fill={color} stroke="var(--surface)" strokeWidth={2} />}
               />
               <Tooltip
-                contentStyle={{ background: '#0c1a2e', border: '1px solid #1a3a5c', borderRadius: 8, fontSize: 12, padding: '6px 10px' }}
+                contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, padding: '6px 10px' }}
                 formatter={(v: unknown, name: string) => {
                   if (name === 't') return [null, null] // hide timestamp row
                   return [`${(v as number)?.toFixed(decimals)}${unit ? ` ${unit}` : ''}`, label]
@@ -377,7 +377,7 @@ function MetricTile({
                   <stop offset="95%" stopColor={color} stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1a3a5c" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               {buildThresholdAreas(metricKey, yDomain)}
               <XAxis
                 dataKey="t" type="number"
@@ -401,7 +401,7 @@ function MetricTile({
                 activeDot={{ r: 3, fill: color, stroke: 'var(--surface)', strokeWidth: 2 }}
               />
               <Tooltip
-                contentStyle={{ background: '#0c1a2e', border: '1px solid #1a3a5c', borderRadius: 8, fontSize: 12, padding: '6px 10px' }}
+                contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, padding: '6px 10px' }}
                 cursor={{ stroke: color, strokeWidth: 1, strokeDasharray: '4 2' }}
                 formatter={(v: unknown) => [`${(v as number)?.toFixed(decimals)}${unit ? ` ${unit}` : ''}`, label]}
                 labelFormatter={t => fmtTooltipTime(t as number, range)}
@@ -433,7 +433,7 @@ function DoorTile({ open, opens }: { open: boolean; opens: number }) {
   return (
     <div className="rounded-xl border p-4 sm:p-5 flex flex-col gap-3"
       style={{
-        background: open ? '#1a0808' : 'var(--surface)',
+        background: open ? 'var(--danger-surface)' : 'var(--surface)',
         borderColor: open ? 'var(--danger)' : 'var(--border)',
         borderLeft: `3px solid ${open ? 'var(--danger)' : 'var(--success)'}`,
       }}>
@@ -449,12 +449,12 @@ function DoorTile({ open, opens }: { open: boolean; opens: number }) {
       <div className="flex-1 flex items-center">
         {open ? (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold"
-            style={{ background: '#3b0a0a', color: 'var(--danger)' }}>
+            style={{ background: 'var(--error-bg-deep)', color: 'var(--danger)' }}>
             ABIERTA
           </span>
         ) : (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold"
-            style={{ background: '#052a14', color: 'var(--success)' }}>
+            style={{ background: 'var(--success-bg)', color: 'var(--success)' }}>
             Cerrada
           </span>
         )}
@@ -622,7 +622,7 @@ export default function Resumen() {
             <button key={v} onClick={() => setRange(v)}
               className="px-3 py-1 rounded-md text-sm font-medium"
               style={range === v
-                ? { background: '#1d4ed8', color: '#fff' }
+                ? { background: 'var(--primary)', color: '#fff' }
                 : { color: 'var(--muted)' }}>
               {l}
             </button>
@@ -641,7 +641,7 @@ export default function Resumen() {
       </div>
 
       {error && (
-        <div className="rounded-xl border p-4 mb-6 text-sm" style={{ borderColor: 'var(--danger)', color: 'var(--danger)', background: '#1a0808' }}>
+        <div className="rounded-xl border p-4 mb-6 text-sm" style={{ borderColor: 'var(--danger)', color: 'var(--danger)', background: 'var(--danger-surface)' }}>
           Error al cargar datos: {error}
         </div>
       )}

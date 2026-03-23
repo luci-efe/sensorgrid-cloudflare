@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import { Menu, X, LogOut, ShieldCheck, Clock, User as UserIcon } from 'lucide-react'
+import { Menu, X, LogOut, ShieldCheck, Clock, User as UserIcon, Sun, Moon } from 'lucide-react'
 import Resumen from './pages/Resumen'
 import Sensores from './pages/Sensores'
 import Alertas from './pages/Alertas'
@@ -18,6 +18,23 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean }[] = [
   { to: '/alertas',  label: 'Alertas'              },
   { to: '/config',   label: 'Config'               },
 ]
+
+// ── Theme toggle ─────────────────────────────────────────────────────────────
+import { useTheme } from './lib/theme'
+import type { Theme } from './lib/theme'
+
+function ThemeToggle({ theme, onToggle }: { theme: Theme; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      className="p-1.5 rounded-lg transition-colors"
+      style={{ color: 'var(--muted)' }}
+      title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+    >
+      {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+    </button>
+  )
+}
 
 // ── User menu ─────────────────────────────────────────────────────────────────
 function UserMenu({ name, role }: { name: string; role: string }) {
@@ -38,7 +55,7 @@ function UserMenu({ name, role }: { name: string; role: string }) {
       >
         <span
           className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
-          style={{ background: '#1d4ed8', color: '#fff' }}
+          style={{ background: 'var(--primary)', color: '#fff' }}
         >
           {name.charAt(0).toUpperCase()}
         </span>
@@ -160,6 +177,7 @@ function PendingApprovalScreen({ onRecheck }: { onRecheck: () => void }) {
 // ── Protected layout ──────────────────────────────────────────────────────────
 function AppShell() {
   const { data: session, isPending: sessionLoading } = useSession()
+  const { theme, toggle: toggleTheme } = useTheme()
   const [menuOpen, setMenuOpen]   = useState(false)
   const [isPending, setIsPending] = useState(false)
   const [checked, setChecked]     = useState(USE_MOCK) // skip check in mock mode
@@ -234,6 +252,7 @@ function AppShell() {
           ))}
         </div>
 
+        <ThemeToggle theme={theme} onToggle={toggleTheme} />
         <UserMenu name={userName} role={userRole} />
       </nav>
 
