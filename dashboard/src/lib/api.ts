@@ -25,6 +25,23 @@ async function get<T>(path: string): Promise<T> {
 	return res.json() as Promise<T>;
 }
 
+async function post<T>(path: string, body: unknown): Promise<T> {
+	const token = await getSessionToken();
+	const res = await fetch(`${WORKER_URL}${path}`, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			...(token ? { Authorization: `Bearer ${token}` } : {}),
+		},
+		body: JSON.stringify(body),
+	});
+	if (!res.ok) {
+		const data = await res.json().catch(() => ({})) as { error?: string };
+		throw new Error(data.error ?? `API POST ${path} returned ${res.status}`);
+	}
+	return res.json();
+}
+
 async function patch<T>(path: string, body: unknown): Promise<T> {
 	const token = await getSessionToken();
 	const res = await fetch(`${WORKER_URL}${path}`, {
@@ -50,6 +67,8 @@ export type AlertRule = {
 	email_tier1: string[];
 	email_tier2: string[];
 	email_tier2_delay_min: number;
+	telegram_tier1: string[];
+	telegram_tier2: string[];
 	created_at: string;
 };
 
@@ -63,6 +82,8 @@ export type AlertEvent = {
 	resolved_at: string | null;
 	tier1_sent_at: string | null;
 	tier2_sent_at: string | null;
+	tg_tier1_sent_at: string | null;
+	tg_tier2_sent_at: string | null;
 	rule_name?: string | null;
 };
 
@@ -122,8 +143,23 @@ export async function patchAlertRulesBulkEmail(updates: {
 	email_tier1?: string[];
 	email_tier2?: string[];
 	email_tier2_delay_min?: number;
+	telegram_tier1?: string[];
+	telegram_tier2?: string[];
 }): Promise<AlertRule[]> {
 	return patch<AlertRule[]>('/api/alert-rules/bulk-email', updates);
+}
+
+// ── Telegram test ─────────────────────────────────────────────────────────
+
+export async function testTelegram(chatId: string): Promise<{ ok: boolean }> {
+	return post<{ ok: boolean }>('/api/telegram/test', { chat_id: chatId });
+}
+
+export type TelegramChat = { id: number; name: string; username: string };
+
+export async function fetchTelegramChats(): Promise<TelegramChat[]> {
+	const data = await get<{ chats: TelegramChat[] }>('/api/telegram/chat-ids');
+	return data.chats;
 }
 
 // ── Alert events ───────────────────────────────────────────────────────────

@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { authClient } from '../lib/auth'
 import { Link } from 'react-router-dom'
-import { CheckCircle } from 'lucide-react'
+import { CheckCircle, Sun, Moon } from 'lucide-react'
+import { useTheme } from '../lib/theme'
 
 export default function Signup() {
+  const { theme, toggle: toggleTheme } = useTheme()
   const [name, setName]         = useState('')
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
@@ -35,9 +37,17 @@ export default function Signup() {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center px-4"
+      className="relative min-h-screen flex items-center justify-center px-4"
       style={{ background: 'var(--bg)' }}
     >
+      <button
+        onClick={toggleTheme}
+        className="absolute top-4 right-4 p-2 rounded-lg"
+        style={{ color: 'var(--muted)' }}
+        title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+      >
+        {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+      </button>
       <div
         className="w-full max-w-sm rounded-2xl border p-8 flex flex-col gap-6"
         style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
@@ -57,7 +67,7 @@ export default function Signup() {
 
         {done ? (
           <div className="flex flex-col items-center gap-4 py-4">
-            <CheckCircle size={40} color="#22c55e" />
+            <CheckCircle size={40} color="var(--ok-text)" />
             <div className="text-center">
               <p className="font-semibold" style={{ color: 'var(--text)' }}>
                 Solicitud enviada
@@ -69,7 +79,7 @@ export default function Signup() {
             <Link
               to="/login"
               className="text-sm font-medium"
-              style={{ color: '#1d4ed8' }}
+              style={{ color: 'var(--primary)' }}
             >
               Volver al inicio de sesión
             </Link>
@@ -126,7 +136,7 @@ export default function Signup() {
             </div>
 
             {error && (
-              <p className="text-xs px-3 py-2 rounded-lg" style={{ color: 'var(--danger)', background: '#2a0a0a' }}>
+              <p className="text-xs px-3 py-2 rounded-lg" style={{ color: 'var(--danger)', background: 'var(--error-bg)' }}>
                 {error}
               </p>
             )}
@@ -136,7 +146,7 @@ export default function Signup() {
               disabled={loading}
               className="w-full py-2.5 rounded-lg font-semibold text-sm mt-1 transition-opacity"
               style={{
-                background: loading ? 'var(--border)' : '#1d4ed8',
+                background: loading ? 'var(--border)' : 'var(--primary)',
                 color: loading ? 'var(--muted)' : '#fff',
                 cursor: loading ? 'not-allowed' : 'pointer',
               }}
@@ -146,7 +156,7 @@ export default function Signup() {
 
             <p className="text-center text-xs" style={{ color: 'var(--muted)' }}>
               ¿Ya tienes cuenta?{' '}
-              <Link to="/login" className="font-medium" style={{ color: '#1d4ed8' }}>
+              <Link to="/login" className="font-medium" style={{ color: 'var(--primary)' }}>
                 Iniciar sesión
               </Link>
             </p>

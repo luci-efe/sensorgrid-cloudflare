@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
-:root {
+:root,
+html[data-theme="dark"] {
   --bg: #07101f;
   --surface: #0c1a2e;
   --surface2: #0f2040;
@@ -12,6 +13,40 @@
   --warning: #f59e0b;
   --danger: #ef4444;
   --cold: #38bdf8;
+  --primary: #1d4ed8;
+  --error-bg: #2a0a0a;
+  --error-bg-deep: #3b0a0a;
+  --danger-surface: #1a0808;
+  --success-bg: #052a14;
+  --success-bg-deep: #052e0a;
+  --warning-bg: #2a1200;
+  --warning-bg-alt: #1a1200;
+  --warning-bg-card: #2a1f00;
+  --ok-text: #22c55e;
+}
+
+html[data-theme="light"] {
+  --bg: #f0f4f8;
+  --surface: #ffffff;
+  --surface2: #e8eef4;
+  --border: #cbd5e1;
+  --text: #1e293b;
+  --muted: #64748b;
+  --accent: #3b82f6;
+  --success: #059669;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --cold: #0284c7;
+  --primary: #1d4ed8;
+  --error-bg: #fee2e2;
+  --error-bg-deep: #fecaca;
+  --danger-surface: #fff1f2;
+  --success-bg: #dcfce7;
+  --success-bg-deep: #d1fae5;
+  --warning-bg: #fef3c7;
+  --warning-bg-alt: #fef9c3;
+  --warning-bg-card: #fffbeb;
+  --ok-text: #16a34a;
 }
 
 * { box-sizing: border-box; }

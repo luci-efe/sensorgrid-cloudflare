@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Bell, CheckCircle, AlertTriangle, AlertCircle, Mail, Pencil, Check, X, RefreshCw } from 'lucide-react'
-import { fetchAlertRules, patchAlertRule, patchAlertRulesBulkEmail, fetchAlertEvents, fetchDevices } from '../lib/api'
+import { Bell, CheckCircle, AlertTriangle, AlertCircle, Mail, Pencil, Check, X, RefreshCw, Send, ExternalLink } from 'lucide-react'
+import { fetchAlertRules, patchAlertRule, patchAlertRulesBulkEmail, fetchAlertEvents, fetchDevices, testTelegram, fetchTelegramChats } from '../lib/api'
+import type { TelegramChat } from '../lib/api'
 import type { AlertRule, AlertEvent } from '../lib/api'
 import type { Device } from '../lib/mock'
 
@@ -31,6 +32,110 @@ const OPERATOR_LABELS: Record<string, string> = {
   eq: '=',
 }
 
+const TELEGRAM_BOT_URL = 'https://t.me/sensorgrid_bot?start=1'
+
+function TelegramBotLink() {
+  return (
+    <a
+      href={TELEGRAM_BOT_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 text-xs font-medium"
+      style={{ color: 'var(--accent)' }}
+    >
+      Abrir bot <ExternalLink size={10} />
+    </a>
+  )
+}
+
+function TelegramTestButton({ chatId }: { chatId: string }) {
+  const [status, setStatus] = useState<'idle' | 'sending' | 'ok' | 'error'>('idle')
+  const [errorMsg, setErrorMsg] = useState('')
+
+  async function handleTest() {
+    const id = chatId.split(',')[0]?.trim()
+    if (!id) return
+    setStatus('sending')
+    setErrorMsg('')
+    try {
+      await testTelegram(id)
+      setStatus('ok')
+      setTimeout(() => setStatus('idle'), 3000)
+    } catch (e) {
+      setStatus('error')
+      setErrorMsg((e as Error).message)
+      setTimeout(() => setStatus('idle'), 4000)
+    }
+  }
+
+  const id = chatId.split(',')[0]?.trim()
+  if (!id) return null
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={handleTest}
+        disabled={status === 'sending'}
+        className="text-xs px-2 py-0.5 rounded border"
+        style={{ borderColor: 'var(--border)', color: 'var(--muted)', cursor: status === 'sending' ? 'not-allowed' : 'pointer' }}
+      >
+        {status === 'sending' ? 'Enviando…' : status === 'ok' ? '✓ Enviado' : status === 'error' ? '✗ Error' : 'Probar'}
+      </button>
+      {status === 'error' && <span className="text-xs" style={{ color: 'var(--danger)' }}>{errorMsg}</span>}
+    </div>
+  )
+}
+
+function TelegramChatPicker({ onSelect }: { onSelect: (id: string) => void }) {
+  const [chats, setChats] = useState<TelegramChat[]>([])
+  const [loading, setLoading] = useState(false)
+  const [fetched, setFetched] = useState(false)
+
+  async function detect() {
+    setLoading(true)
+    try {
+      const result = await fetchTelegramChats()
+      setChats(result)
+      setFetched(true)
+    } catch { /* ignore */ }
+    setLoading(false)
+  }
+
+  if (!fetched) {
+    return (
+      <button
+        onClick={detect}
+        disabled={loading}
+        className="text-xs px-2 py-0.5 rounded border"
+        style={{ borderColor: 'var(--accent)', color: 'var(--accent)', cursor: loading ? 'not-allowed' : 'pointer' }}
+      >
+        {loading ? 'Buscando…' : 'Detectar chat IDs'}
+      </button>
+    )
+  }
+
+  if (chats.length === 0) {
+    return <span className="text-xs" style={{ color: 'var(--muted)' }}>No se encontraron usuarios. Asegúrate de enviar /start al bot primero.</span>
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {chats.map(c => (
+        <button
+          key={c.id}
+          onClick={() => onSelect(String(c.id))}
+          className="text-xs px-2 py-0.5 rounded-full border"
+          style={{ borderColor: 'var(--border)', color: 'var(--text)', cursor: 'pointer' }}
+          title={`Chat ID: ${c.id}`}
+        >
+          {c.name || c.username || String(c.id)}
+          <span className="ml-1" style={{ color: 'var(--muted)' }}>({c.id})</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function fmtRelative(ts: string): string {
   const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000)
   if (s < 60) return 'hace < 1 min'
@@ -50,12 +155,12 @@ function fmtDate(ts: string): string {
 function StatusBadge({ resolved }: { resolved: boolean }) {
   return resolved ? (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
-      style={{ background: '#052a14', color: 'var(--success)' }}>
+      style={{ background: 'var(--success-bg)', color: 'var(--success)' }}>
       <CheckCircle size={10} /> Resuelta
     </span>
   ) : (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
-      style={{ background: '#2a1200', color: 'var(--danger)' }}>
+      style={{ background: 'var(--warning-bg)', color: 'var(--danger)' }}>
       <AlertCircle size={10} /> Activa
     </span>
   )
@@ -67,6 +172,8 @@ function RuleRow({ rule, onUpdate }: { rule: AlertRule; onUpdate: (updated: Aler
   const [threshold, setThreshold] = useState(String(rule.threshold))
   const [tier1, setTier1]       = useState((rule.email_tier1 ?? []).join(', '))
   const [tier2, setTier2]       = useState((rule.email_tier2 ?? []).join(', '))
+  const [tgTier1, setTgTier1]   = useState((rule.telegram_tier1 ?? []).join(', '))
+  const [tgTier2, setTgTier2]   = useState((rule.telegram_tier2 ?? []).join(', '))
   const [delay, setDelay]       = useState(String(rule.email_tier2_delay_min ?? 30))
   const [enabled, setEnabled]   = useState(rule.enabled)
   const [saving, setSaving]     = useState(false)
@@ -78,6 +185,8 @@ function RuleRow({ rule, onUpdate }: { rule: AlertRule; onUpdate: (updated: Aler
         threshold: parseFloat(threshold),
         email_tier1: tier1.split(',').map((s: string) => s.trim()).filter(Boolean),
         email_tier2: tier2.split(',').map((s: string) => s.trim()).filter(Boolean),
+        telegram_tier1: tgTier1.split(',').map((s: string) => s.trim()).filter(Boolean),
+        telegram_tier2: tgTier2.split(',').map((s: string) => s.trim()).filter(Boolean),
         email_tier2_delay_min: parseInt(delay, 10),
         enabled,
       })
@@ -127,7 +236,7 @@ function RuleRow({ rule, onUpdate }: { rule: AlertRule; onUpdate: (updated: Aler
             onClick={toggleEnabled}
             className="px-2 py-0.5 rounded-full text-xs font-medium border"
             style={enabled
-              ? { borderColor: 'var(--success)', color: 'var(--success)', background: '#052a14' }
+              ? { borderColor: 'var(--success)', color: 'var(--success)', background: 'var(--success-bg)' }
               : { borderColor: 'var(--border)', color: 'var(--muted)' }}
           >
             {enabled ? 'Activa' : 'Inactiva'}
@@ -136,7 +245,7 @@ function RuleRow({ rule, onUpdate }: { rule: AlertRule; onUpdate: (updated: Aler
           {editing ? (
             <div className="flex gap-1">
               <button onClick={save} disabled={saving}
-                className="p-1.5 rounded-lg" style={{ background: '#052a14', color: 'var(--success)' }}>
+                className="p-1.5 rounded-lg" style={{ background: 'var(--success-bg)', color: 'var(--success)' }}>
                 <Check size={13} />
               </button>
               <button onClick={() => setEditing(false)}
@@ -153,53 +262,108 @@ function RuleRow({ rule, onUpdate }: { rule: AlertRule; onUpdate: (updated: Aler
         </div>
       </div>
 
-      {/* Email config (shown when editing or emails configured) */}
-      {(editing || tier1 || tier2) && (
-        <div className="flex flex-col gap-2 pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
-          <div className="flex items-center gap-1.5">
-            <Mail size={11} style={{ color: 'var(--muted)' }} />
-            <span className="text-xs font-medium" style={{ color: 'var(--muted)' }}>Notificaciones por correo</span>
+      {/* Notification config (shown when editing or configured) */}
+      {(editing || tier1 || tier2 || tgTier1 || tgTier2) && (
+        <div className="flex flex-col gap-3 pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
+          {/* Email section */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-1.5">
+              <Mail size={11} style={{ color: 'var(--muted)' }} />
+              <span className="text-xs font-medium" style={{ color: 'var(--muted)' }}>Correo electrónico</span>
+            </div>
+            {editing ? (
+              <div className="flex flex-col gap-2">
+                <div>
+                  <label className="text-xs mb-1 block" style={{ color: 'var(--muted)' }}>
+                    Nivel 1 — alerta inmediata (separar con comas)
+                  </label>
+                  <input
+                    value={tier1} onChange={e => setTier1(e.target.value)}
+                    placeholder="correo@ejemplo.com, otro@ejemplo.com"
+                    className="w-full px-2 py-1.5 rounded-lg border text-xs"
+                    style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs mb-1 block" style={{ color: 'var(--muted)' }}>
+                    Nivel 2 — escalamiento (separar con comas)
+                  </label>
+                  <input
+                    value={tier2} onChange={e => setTier2(e.target.value)}
+                    placeholder="supervisor@ejemplo.com"
+                    className="w-full px-2 py-1.5 rounded-lg border text-xs"
+                    style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs flex flex-col gap-1" style={{ color: 'var(--muted)' }}>
+                {tier1 && <span><strong style={{ color: 'var(--text)' }}>Nivel 1:</strong> {tier1}</span>}
+                {tier2 && <span><strong style={{ color: 'var(--text)' }}>Nivel 2:</strong> {tier2}</span>}
+              </div>
+            )}
           </div>
 
-          {editing ? (
-            <div className="flex flex-col gap-2">
-              <div>
-                <label className="text-xs mb-1 block" style={{ color: 'var(--muted)' }}>
-                  Nivel 1 — alerta inmediata (separar con comas)
-                </label>
-                <input
-                  value={tier1} onChange={e => setTier1(e.target.value)}
-                  placeholder="correo@ejemplo.com, otro@ejemplo.com"
-                  className="w-full px-2 py-1.5 rounded-lg border text-xs"
-                  style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-                />
-              </div>
-              <div>
-                <label className="text-xs mb-1 block" style={{ color: 'var(--muted)' }}>
-                  Nivel 2 — escalamiento (separar con comas)
-                </label>
-                <input
-                  value={tier2} onChange={e => setTier2(e.target.value)}
-                  placeholder="supervisor@ejemplo.com"
-                  className="w-full px-2 py-1.5 rounded-lg border text-xs"
-                  style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-xs" style={{ color: 'var(--muted)' }}>Escalar después de</label>
-                <input
-                  type="number" value={delay} onChange={e => setDelay(e.target.value)}
-                  className="w-16 px-2 py-1 rounded border text-xs"
-                  style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-                />
-                <span className="text-xs" style={{ color: 'var(--muted)' }}>minutos</span>
-              </div>
+          {/* Telegram section */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-1.5">
+              <Send size={11} style={{ color: 'var(--muted)' }} />
+              <span className="text-xs font-medium" style={{ color: 'var(--muted)' }}>Telegram</span>
+              {editing && <TelegramBotLink />}
             </div>
-          ) : (
-            <div className="text-xs flex flex-col gap-1" style={{ color: 'var(--muted)' }}>
-              {tier1 && <span><strong style={{ color: 'var(--text)' }}>Nivel 1:</strong> {tier1}</span>}
-              {tier2 && <span><strong style={{ color: 'var(--text)' }}>Nivel 2:</strong> {tier2} (después de {delay} min)</span>}
+            {editing ? (
+              <div className="flex flex-col gap-2">
+                <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                  Abre el bot, envía /start, luego detecta tu ID o ingrésalo manualmente.
+                </p>
+                <TelegramChatPicker onSelect={id => setTgTier1(prev => prev ? `${prev}, ${id}` : id)} />
+                <div>
+                  <label className="text-xs mb-1 block" style={{ color: 'var(--muted)' }}>
+                    Nivel 1 — chat IDs (separar con comas)
+                  </label>
+                  <input
+                    value={tgTier1} onChange={e => setTgTier1(e.target.value)}
+                    placeholder="123456789, 987654321"
+                    className="w-full px-2 py-1.5 rounded-lg border text-xs"
+                    style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                  />
+                  <TelegramTestButton chatId={tgTier1} />
+                </div>
+                <div>
+                  <label className="text-xs mb-1 block" style={{ color: 'var(--muted)' }}>
+                    Nivel 2 — chat IDs de escalamiento (separar con comas)
+                  </label>
+                  <input
+                    value={tgTier2} onChange={e => setTgTier2(e.target.value)}
+                    placeholder="123456789"
+                    className="w-full px-2 py-1.5 rounded-lg border text-xs"
+                    style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                  />
+                  <TelegramTestButton chatId={tgTier2} />
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs flex flex-col gap-1" style={{ color: 'var(--muted)' }}>
+                {tgTier1 && <span><strong style={{ color: 'var(--text)' }}>Nivel 1:</strong> {tgTier1}</span>}
+                {tgTier2 && <span><strong style={{ color: 'var(--text)' }}>Nivel 2:</strong> {tgTier2}</span>}
+              </div>
+            )}
+          </div>
+
+          {/* Escalation delay (shared) */}
+          {editing && (
+            <div className="flex items-center gap-2">
+              <label className="text-xs" style={{ color: 'var(--muted)' }}>Escalar después de</label>
+              <input
+                type="number" value={delay} onChange={e => setDelay(e.target.value)}
+                className="w-16 px-2 py-1 rounded border text-xs"
+                style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+              />
+              <span className="text-xs" style={{ color: 'var(--muted)' }}>minutos</span>
             </div>
+          )}
+          {!editing && (tier1 || tier2 || tgTier1 || tgTier2) && (
+            <span className="text-xs" style={{ color: 'var(--muted)' }}>Escalamiento después de {delay} min</span>
           )}
         </div>
       )}
@@ -208,13 +372,15 @@ function RuleRow({ rule, onUpdate }: { rule: AlertRule; onUpdate: (updated: Aler
 }
 
 // ── Bulk email panel ────────────────────────────────────────────────────────
-function BulkEmailPanel({ onApply }: { onApply: (rules: AlertRule[]) => void }) {
-  const [open, setOpen]     = useState(false)
-  const [tier1, setTier1]   = useState('')
-  const [tier2, setTier2]   = useState('')
-  const [delay, setDelay]   = useState('30')
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved]   = useState(false)
+function BulkNotificationPanel({ onApply }: { onApply: (rules: AlertRule[]) => void }) {
+  const [open, setOpen]       = useState(false)
+  const [tier1, setTier1]     = useState('')
+  const [tier2, setTier2]     = useState('')
+  const [tgTier1, setTgTier1] = useState('')
+  const [tgTier2, setTgTier2] = useState('')
+  const [delay, setDelay]     = useState('30')
+  const [saving, setSaving]   = useState(false)
+  const [saved, setSaved]     = useState(false)
 
   async function handleApply() {
     setSaving(true)
@@ -223,8 +389,12 @@ function BulkEmailPanel({ onApply }: { onApply: (rules: AlertRule[]) => void }) 
       const updates: Record<string, unknown> = {}
       const t1 = tier1.split(',').map(s => s.trim()).filter(Boolean)
       const t2 = tier2.split(',').map(s => s.trim()).filter(Boolean)
+      const tg1 = tgTier1.split(',').map(s => s.trim()).filter(Boolean)
+      const tg2 = tgTier2.split(',').map(s => s.trim()).filter(Boolean)
       if (t1.length > 0) updates.email_tier1 = t1
       if (t2.length > 0) updates.email_tier2 = t2
+      if (tg1.length > 0) updates.telegram_tier1 = tg1
+      if (tg2.length > 0) updates.telegram_tier2 = tg2
       if (delay) updates.email_tier2_delay_min = parseInt(delay, 10)
       const updatedRules = await patchAlertRulesBulkEmail(updates as any)
       onApply(updatedRules)
@@ -235,6 +405,8 @@ function BulkEmailPanel({ onApply }: { onApply: (rules: AlertRule[]) => void }) 
     }
   }
 
+  const hasInput = tier1.trim() || tier2.trim() || tgTier1.trim() || tgTier2.trim()
+
   return (
     <div className="rounded-xl border p-4 mb-4"
       style={{ background: 'var(--surface2)', borderColor: 'var(--border)' }}>
@@ -243,38 +415,85 @@ function BulkEmailPanel({ onApply }: { onApply: (rules: AlertRule[]) => void }) 
         className="flex items-center gap-2 w-full text-left text-sm font-semibold"
         style={{ color: 'var(--text)' }}
       >
-        <Mail size={14} style={{ color: 'var(--accent)' }} />
-        Configurar correo para todas las alertas
+        <Bell size={14} style={{ color: 'var(--accent)' }} />
+        Configurar notificaciones para todas las alertas
         <span className="ml-auto text-xs" style={{ color: 'var(--muted)' }}>{open ? '▲' : '▼'}</span>
       </button>
 
       {open && (
-        <div className="mt-4 flex flex-col gap-3">
+        <div className="mt-4 flex flex-col gap-4">
           <p className="text-xs" style={{ color: 'var(--muted)' }}>
-            Aplica las mismas direcciones de correo a <strong>todas</strong> las reglas de alerta. Los campos vacíos no se modificarán.
+            Aplica la misma configuración de notificaciones a <strong>todas</strong> las reglas de alerta. Los campos vacíos no se modificarán.
           </p>
-          <div>
-            <label className="text-xs mb-1 block" style={{ color: 'var(--muted)' }}>
-              Nivel 1 — alerta inmediata (separar con comas)
-            </label>
-            <input
-              value={tier1} onChange={e => setTier1(e.target.value)}
-              placeholder="correo@ejemplo.com, otro@ejemplo.com"
-              className="w-full px-2 py-1.5 rounded-lg border text-xs"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-            />
+
+          {/* Email section */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-1.5">
+              <Mail size={12} style={{ color: 'var(--accent)' }} />
+              <span className="text-xs font-semibold" style={{ color: 'var(--text)' }}>Correo electrónico</span>
+            </div>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: 'var(--muted)' }}>
+                Nivel 1 — alerta inmediata (separar con comas)
+              </label>
+              <input
+                value={tier1} onChange={e => setTier1(e.target.value)}
+                placeholder="correo@ejemplo.com, otro@ejemplo.com"
+                className="w-full px-2 py-1.5 rounded-lg border text-xs"
+                style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+              />
+            </div>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: 'var(--muted)' }}>
+                Nivel 2 — escalamiento (separar con comas)
+              </label>
+              <input
+                value={tier2} onChange={e => setTier2(e.target.value)}
+                placeholder="supervisor@ejemplo.com"
+                className="w-full px-2 py-1.5 rounded-lg border text-xs"
+                style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+              />
+            </div>
           </div>
-          <div>
-            <label className="text-xs mb-1 block" style={{ color: 'var(--muted)' }}>
-              Nivel 2 — escalamiento (separar con comas)
-            </label>
-            <input
-              value={tier2} onChange={e => setTier2(e.target.value)}
-              placeholder="supervisor@ejemplo.com"
-              className="w-full px-2 py-1.5 rounded-lg border text-xs"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-            />
+
+          {/* Telegram section */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-1.5">
+              <Send size={12} style={{ color: 'var(--accent)' }} />
+              <span className="text-xs font-semibold" style={{ color: 'var(--text)' }}>Telegram</span>
+              <TelegramBotLink />
+            </div>
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>
+              1. Abre el bot con el enlace de arriba y envía <strong>/start</strong>. 2. Haz clic en "Detectar chat IDs". 3. Selecciona tu usuario o pega el ID manualmente.
+            </p>
+            <TelegramChatPicker onSelect={id => setTgTier1(prev => prev ? `${prev}, ${id}` : id)} />
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: 'var(--muted)' }}>
+                Nivel 1 — chat IDs de alerta inmediata (separar con comas)
+              </label>
+              <input
+                value={tgTier1} onChange={e => setTgTier1(e.target.value)}
+                placeholder="123456789, 987654321"
+                className="w-full px-2 py-1.5 rounded-lg border text-xs"
+                style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+              />
+              <TelegramTestButton chatId={tgTier1} />
+            </div>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: 'var(--muted)' }}>
+                Nivel 2 — chat IDs de escalamiento (separar con comas)
+              </label>
+              <input
+                value={tgTier2} onChange={e => setTgTier2(e.target.value)}
+                placeholder="123456789"
+                className="w-full px-2 py-1.5 rounded-lg border text-xs"
+                style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+              />
+              <TelegramTestButton chatId={tgTier2} />
+            </div>
           </div>
+
+          {/* Delay */}
           <div className="flex items-center gap-2">
             <label className="text-xs" style={{ color: 'var(--muted)' }}>Escalar después de</label>
             <input
@@ -286,13 +505,13 @@ function BulkEmailPanel({ onApply }: { onApply: (rules: AlertRule[]) => void }) 
           </div>
           <button
             onClick={handleApply}
-            disabled={saving || (!tier1.trim() && !tier2.trim())}
+            disabled={saving || !hasInput}
             className="self-start px-4 py-1.5 rounded-lg text-xs font-semibold"
             style={{
-              background: saving ? 'var(--border)' : '#1d4ed8',
+              background: saving ? 'var(--border)' : 'var(--primary)',
               color: saving ? 'var(--muted)' : '#fff',
-              cursor: saving || (!tier1.trim() && !tier2.trim()) ? 'not-allowed' : 'pointer',
-              opacity: !tier1.trim() && !tier2.trim() ? 0.5 : 1,
+              cursor: saving || !hasInput ? 'not-allowed' : 'pointer',
+              opacity: !hasInput ? 0.5 : 1,
             }}
           >
             {saving ? 'Aplicando…' : saved ? '✓ Aplicado' : 'Aplicar a todas las reglas'}
@@ -340,7 +559,7 @@ export default function Alertas() {
     `px-4 py-2 text-sm font-medium rounded-lg ${tab === t ? 'text-white' : ''}`
   const tabStyle = (t: typeof tab) =>
     tab === t
-      ? { background: '#1d4ed8', color: '#fff' }
+      ? { background: 'var(--primary)', color: '#fff' }
       : { color: 'var(--muted)' }
 
   return (
@@ -361,7 +580,7 @@ export default function Alertas() {
         {/* Active count badge */}
         {activeEvents.length > 0 && (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold"
-            style={{ background: '#3b0a0a', color: 'var(--danger)' }}>
+            style={{ background: 'var(--error-bg-deep)', color: 'var(--danger)' }}>
             <AlertCircle size={11} />
             {activeEvents.length} alerta{activeEvents.length !== 1 ? 's' : ''} activa{activeEvents.length !== 1 ? 's' : ''}
           </span>
@@ -403,7 +622,7 @@ export default function Alertas() {
               ) : (
                 activeEvents.map(ev => (
                   <div key={ev.id} className="rounded-xl border p-4 flex flex-col gap-2"
-                    style={{ background: '#1a0808', borderColor: 'var(--danger)' }}>
+                    style={{ background: 'var(--danger-surface)', borderColor: 'var(--danger)' }}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <AlertTriangle size={15} color="var(--danger)" />
@@ -418,16 +637,26 @@ export default function Alertas() {
                       <span>Valor: <strong style={{ color: 'var(--danger)' }}>{ev.value.toFixed(1)} {METRIC_UNITS[ev.metric] ?? ''}</strong></span>
                       <span>Desde: {fmtRelative(ev.triggered_at)}</span>
                     </div>
-                    {(ev.tier1_sent_at || ev.tier2_sent_at) && (
-                      <div className="flex gap-2 mt-1">
+                    {(ev.tier1_sent_at || ev.tier2_sent_at || ev.tg_tier1_sent_at || ev.tg_tier2_sent_at) && (
+                      <div className="flex flex-wrap gap-2 mt-1">
                         {ev.tier1_sent_at && (
                           <span className="text-xs flex items-center gap-1" style={{ color: 'var(--warning)' }}>
-                            <Mail size={10} /> Nivel 1 notificado
+                            <Mail size={10} /> Email N1
                           </span>
                         )}
                         {ev.tier2_sent_at && (
                           <span className="text-xs flex items-center gap-1" style={{ color: 'var(--danger)' }}>
-                            <Mail size={10} /> Nivel 2 notificado
+                            <Mail size={10} /> Email N2
+                          </span>
+                        )}
+                        {ev.tg_tier1_sent_at && (
+                          <span className="text-xs flex items-center gap-1" style={{ color: 'var(--warning)' }}>
+                            <Send size={10} /> Telegram N1
+                          </span>
+                        )}
+                        {ev.tg_tier2_sent_at && (
+                          <span className="text-xs flex items-center gap-1" style={{ color: 'var(--danger)' }}>
+                            <Send size={10} /> Telegram N2
                           </span>
                         )}
                       </div>
@@ -465,9 +694,9 @@ export default function Alertas() {
           {/* ── Reglas ──────────────────────────────────────────────────── */}
           {tab === 'reglas' && (
             <div className="flex flex-col gap-3">
-              <BulkEmailPanel onApply={updatedRules => setRules(updatedRules)} />
+              <BulkNotificationPanel onApply={updatedRules => setRules(updatedRules)} />
               <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                Configura los umbrales y destinatarios de correo para cada tipo de alerta.
+                Configura umbrales y destinatarios (correo y Telegram) para cada alerta.
                 <br />Nivel 1 recibe la alerta de inmediato; Nivel 2 la recibe si la alerta persiste.
               </p>
               {rules.length === 0 ? (

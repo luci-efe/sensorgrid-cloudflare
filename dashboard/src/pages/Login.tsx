@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { signIn } from '../lib/auth'
 import { Link } from 'react-router-dom'
+import { Sun, Moon } from 'lucide-react'
+import { useTheme } from '../lib/theme'
 
 export default function Login() {
+  const { theme, toggle: toggleTheme } = useTheme()
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [error, setError]       = useState('')
@@ -30,9 +33,17 @@ export default function Login() {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center px-4"
+      className="relative min-h-screen flex items-center justify-center px-4"
       style={{ background: 'var(--bg)' }}
     >
+      <button
+        onClick={toggleTheme}
+        className="absolute top-4 right-4 p-2 rounded-lg"
+        style={{ color: 'var(--muted)' }}
+        title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+      >
+        {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+      </button>
       <div
         className="w-full max-w-sm rounded-2xl border p-8 flex flex-col gap-6"
         style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
@@ -99,7 +110,7 @@ export default function Login() {
           </div>
 
           {error && (
-            <p className="text-xs px-3 py-2 rounded-lg" style={{ color: 'var(--danger)', background: '#2a0a0a' }}>
+            <p className="text-xs px-3 py-2 rounded-lg" style={{ color: 'var(--danger)', background: 'var(--error-bg)' }}>
               {error}
             </p>
           )}
@@ -109,7 +120,7 @@ export default function Login() {
             disabled={loading}
             className="w-full py-2.5 rounded-lg font-semibold text-sm mt-1 transition-opacity"
             style={{
-              background: loading ? 'var(--border)' : '#1d4ed8',
+              background: loading ? 'var(--border)' : 'var(--primary)',
               color: loading ? 'var(--muted)' : '#fff',
               cursor: loading ? 'not-allowed' : 'pointer',
             }}
@@ -119,7 +130,7 @@ export default function Login() {
 
           <p className="text-center text-xs" style={{ color: 'var(--muted)' }}>
             ¿No tienes cuenta?{' '}
-            <Link to="/signup" className="font-medium" style={{ color: '#1d4ed8' }}>
+            <Link to="/signup" className="font-medium" style={{ color: 'var(--primary)' }}>
               Crear cuenta
             </Link>
           </p>
