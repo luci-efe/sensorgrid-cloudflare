@@ -25,6 +25,23 @@ async function get<T>(path: string): Promise<T> {
 	return res.json() as Promise<T>;
 }
 
+async function post<T>(path: string, body: unknown): Promise<T> {
+	const token = await getSessionToken();
+	const res = await fetch(`${WORKER_URL}${path}`, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			...(token ? { Authorization: `Bearer ${token}` } : {}),
+		},
+		body: JSON.stringify(body),
+	});
+	if (!res.ok) {
+		const data = await res.json().catch(() => ({})) as { error?: string };
+		throw new Error(data.error ?? `API POST ${path} returned ${res.status}`);
+	}
+	return res.json();
+}
+
 async function patch<T>(path: string, body: unknown): Promise<T> {
 	const token = await getSessionToken();
 	const res = await fetch(`${WORKER_URL}${path}`, {
@@ -130,6 +147,19 @@ export async function patchAlertRulesBulkEmail(updates: {
 	telegram_tier2?: string[];
 }): Promise<AlertRule[]> {
 	return patch<AlertRule[]>('/api/alert-rules/bulk-email', updates);
+}
+
+// ── Telegram test ─────────────────────────────────────────────────────────
+
+export async function testTelegram(chatId: string): Promise<{ ok: boolean }> {
+	return post<{ ok: boolean }>('/api/telegram/test', { chat_id: chatId });
+}
+
+export type TelegramChat = { id: number; name: string; username: string };
+
+export async function fetchTelegramChats(): Promise<TelegramChat[]> {
+	const data = await get<{ chats: TelegramChat[] }>('/api/telegram/chat-ids');
+	return data.chats;
 }
 
 // ── Alert events ───────────────────────────────────────────────────────────

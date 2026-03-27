@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Bell, CheckCircle, AlertTriangle, AlertCircle, Mail, Pencil, Check, X, RefreshCw, Send } from 'lucide-react'
-import { fetchAlertRules, patchAlertRule, patchAlertRulesBulkEmail, fetchAlertEvents, fetchDevices } from '../lib/api'
+import { Bell, CheckCircle, AlertTriangle, AlertCircle, Mail, Pencil, Check, X, RefreshCw, Send, ExternalLink } from 'lucide-react'
+import { fetchAlertRules, patchAlertRule, patchAlertRulesBulkEmail, fetchAlertEvents, fetchDevices, testTelegram, fetchTelegramChats } from '../lib/api'
+import type { TelegramChat } from '../lib/api'
 import type { AlertRule, AlertEvent } from '../lib/api'
 import type { Device } from '../lib/mock'
 
@@ -29,6 +30,110 @@ const OPERATOR_LABELS: Record<string, string> = {
   gt: '>',
   lt: '<',
   eq: '=',
+}
+
+const TELEGRAM_BOT_URL = 'https://t.me/sensorgrid_bot?start=1'
+
+function TelegramBotLink() {
+  return (
+    <a
+      href={TELEGRAM_BOT_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 text-xs font-medium"
+      style={{ color: 'var(--accent)' }}
+    >
+      Abrir bot <ExternalLink size={10} />
+    </a>
+  )
+}
+
+function TelegramTestButton({ chatId }: { chatId: string }) {
+  const [status, setStatus] = useState<'idle' | 'sending' | 'ok' | 'error'>('idle')
+  const [errorMsg, setErrorMsg] = useState('')
+
+  async function handleTest() {
+    const id = chatId.split(',')[0]?.trim()
+    if (!id) return
+    setStatus('sending')
+    setErrorMsg('')
+    try {
+      await testTelegram(id)
+      setStatus('ok')
+      setTimeout(() => setStatus('idle'), 3000)
+    } catch (e) {
+      setStatus('error')
+      setErrorMsg((e as Error).message)
+      setTimeout(() => setStatus('idle'), 4000)
+    }
+  }
+
+  const id = chatId.split(',')[0]?.trim()
+  if (!id) return null
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={handleTest}
+        disabled={status === 'sending'}
+        className="text-xs px-2 py-0.5 rounded border"
+        style={{ borderColor: 'var(--border)', color: 'var(--muted)', cursor: status === 'sending' ? 'not-allowed' : 'pointer' }}
+      >
+        {status === 'sending' ? 'Enviando…' : status === 'ok' ? '✓ Enviado' : status === 'error' ? '✗ Error' : 'Probar'}
+      </button>
+      {status === 'error' && <span className="text-xs" style={{ color: 'var(--danger)' }}>{errorMsg}</span>}
+    </div>
+  )
+}
+
+function TelegramChatPicker({ onSelect }: { onSelect: (id: string) => void }) {
+  const [chats, setChats] = useState<TelegramChat[]>([])
+  const [loading, setLoading] = useState(false)
+  const [fetched, setFetched] = useState(false)
+
+  async function detect() {
+    setLoading(true)
+    try {
+      const result = await fetchTelegramChats()
+      setChats(result)
+      setFetched(true)
+    } catch { /* ignore */ }
+    setLoading(false)
+  }
+
+  if (!fetched) {
+    return (
+      <button
+        onClick={detect}
+        disabled={loading}
+        className="text-xs px-2 py-0.5 rounded border"
+        style={{ borderColor: 'var(--accent)', color: 'var(--accent)', cursor: loading ? 'not-allowed' : 'pointer' }}
+      >
+        {loading ? 'Buscando…' : 'Detectar chat IDs'}
+      </button>
+    )
+  }
+
+  if (chats.length === 0) {
+    return <span className="text-xs" style={{ color: 'var(--muted)' }}>No se encontraron usuarios. Asegúrate de enviar /start al bot primero.</span>
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {chats.map(c => (
+        <button
+          key={c.id}
+          onClick={() => onSelect(String(c.id))}
+          className="text-xs px-2 py-0.5 rounded-full border"
+          style={{ borderColor: 'var(--border)', color: 'var(--text)', cursor: 'pointer' }}
+          title={`Chat ID: ${c.id}`}
+        >
+          {c.name || c.username || String(c.id)}
+          <span className="ml-1" style={{ color: 'var(--muted)' }}>({c.id})</span>
+        </button>
+      ))}
+    </div>
+  )
 }
 
 function fmtRelative(ts: string): string {
@@ -204,9 +309,14 @@ function RuleRow({ rule, onUpdate }: { rule: AlertRule; onUpdate: (updated: Aler
             <div className="flex items-center gap-1.5">
               <Send size={11} style={{ color: 'var(--muted)' }} />
               <span className="text-xs font-medium" style={{ color: 'var(--muted)' }}>Telegram</span>
+              {editing && <TelegramBotLink />}
             </div>
             {editing ? (
               <div className="flex flex-col gap-2">
+                <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                  Abre el bot, envía /start, luego detecta tu ID o ingrésalo manualmente.
+                </p>
+                <TelegramChatPicker onSelect={id => setTgTier1(prev => prev ? `${prev}, ${id}` : id)} />
                 <div>
                   <label className="text-xs mb-1 block" style={{ color: 'var(--muted)' }}>
                     Nivel 1 — chat IDs (separar con comas)
@@ -217,6 +327,7 @@ function RuleRow({ rule, onUpdate }: { rule: AlertRule; onUpdate: (updated: Aler
                     className="w-full px-2 py-1.5 rounded-lg border text-xs"
                     style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
                   />
+                  <TelegramTestButton chatId={tgTier1} />
                 </div>
                 <div>
                   <label className="text-xs mb-1 block" style={{ color: 'var(--muted)' }}>
@@ -228,6 +339,7 @@ function RuleRow({ rule, onUpdate }: { rule: AlertRule; onUpdate: (updated: Aler
                     className="w-full px-2 py-1.5 rounded-lg border text-xs"
                     style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
                   />
+                  <TelegramTestButton chatId={tgTier2} />
                 </div>
               </div>
             ) : (
@@ -349,7 +461,12 @@ function BulkNotificationPanel({ onApply }: { onApply: (rules: AlertRule[]) => v
             <div className="flex items-center gap-1.5">
               <Send size={12} style={{ color: 'var(--accent)' }} />
               <span className="text-xs font-semibold" style={{ color: 'var(--text)' }}>Telegram</span>
+              <TelegramBotLink />
             </div>
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>
+              1. Abre el bot con el enlace de arriba y envía <strong>/start</strong>. 2. Haz clic en "Detectar chat IDs". 3. Selecciona tu usuario o pega el ID manualmente.
+            </p>
+            <TelegramChatPicker onSelect={id => setTgTier1(prev => prev ? `${prev}, ${id}` : id)} />
             <div>
               <label className="text-xs mb-1 block" style={{ color: 'var(--muted)' }}>
                 Nivel 1 — chat IDs de alerta inmediata (separar con comas)
@@ -360,6 +477,7 @@ function BulkNotificationPanel({ onApply }: { onApply: (rules: AlertRule[]) => v
                 className="w-full px-2 py-1.5 rounded-lg border text-xs"
                 style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
               />
+              <TelegramTestButton chatId={tgTier1} />
             </div>
             <div>
               <label className="text-xs mb-1 block" style={{ color: 'var(--muted)' }}>
@@ -371,6 +489,7 @@ function BulkNotificationPanel({ onApply }: { onApply: (rules: AlertRule[]) => v
                 className="w-full px-2 py-1.5 rounded-lg border text-xs"
                 style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
               />
+              <TelegramTestButton chatId={tgTier2} />
             </div>
           </div>
 

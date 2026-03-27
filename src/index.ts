@@ -642,6 +642,67 @@ export default {
       return new Response('Not found', { status: 404, headers: hdrs });
     }
 
+    // ── GET /api/telegram/chat-ids — fetch recent chat IDs from bot updates
+    if (request.method === 'GET' && url.pathname === '/api/telegram/chat-ids') {
+      const authResult = await getAuthUser(request, sql);
+      const hdrs = corsHeaders(env, request);
+      if (!authResult || authResult.status !== 'ok')
+        return new Response('Unauthorized', { status: 401, headers: hdrs });
+      if (authResult.role !== 'admin')
+        return new Response('Forbidden', { status: 403, headers: hdrs });
+      if (!env.TELEGRAM_TOKEN)
+        return new Response(JSON.stringify({ chats: [] }), { headers: hdrs });
+
+      const tgRes = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/getUpdates?limit=100`);
+      const tgData = await tgRes.json() as { ok: boolean; result?: { message?: { chat?: { id: number; first_name?: string; username?: string } } }[] };
+
+      const seen = new Map<number, { id: number; name: string; username: string }>();
+      for (const update of tgData.result ?? []) {
+        const chat = update.message?.chat;
+        if (chat?.id && !seen.has(chat.id)) {
+          seen.set(chat.id, {
+            id: chat.id,
+            name: chat.first_name ?? '',
+            username: chat.username ?? '',
+          });
+        }
+      }
+      return new Response(JSON.stringify({ chats: [...seen.values()] }), { headers: hdrs });
+    }
+
+    // ── POST /api/telegram/test — send a test message to verify chat ID ──
+    if (request.method === 'POST' && url.pathname === '/api/telegram/test') {
+      const authResult = await getAuthUser(request, sql);
+      const hdrs = corsHeaders(env, request);
+      if (!authResult || authResult.status !== 'ok')
+        return new Response('Unauthorized', { status: 401, headers: hdrs });
+      if (authResult.role !== 'admin')
+        return new Response('Forbidden', { status: 403, headers: hdrs });
+
+      const { chat_id } = await request.json() as { chat_id?: string };
+      if (!chat_id?.trim())
+        return new Response(JSON.stringify({ ok: false, error: 'chat_id is required' }), { status: 400, headers: hdrs });
+
+      if (!env.TELEGRAM_TOKEN)
+        return new Response(JSON.stringify({ ok: false, error: 'TELEGRAM_TOKEN not configured' }), { status: 500, headers: hdrs });
+
+      const text = `✅ <b>SensorGrid — Prueba de conexión</b>\n\n` +
+        `Este es un mensaje de prueba. Si lo recibes, tu chat ID (<code>${chat_id.trim()}</code>) está correctamente configurado.\n\n` +
+        `<i>Mensaje automático — SensorGrid</i>`;
+
+      const tgRes = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chat_id.trim(), text, parse_mode: 'HTML' }),
+      });
+      const tgData = await tgRes.json() as { ok: boolean; description?: string };
+
+      if (!tgData.ok)
+        return new Response(JSON.stringify({ ok: false, error: tgData.description ?? 'Telegram API error' }), { status: 400, headers: hdrs });
+
+      return new Response(JSON.stringify({ ok: true }), { headers: hdrs });
+    }
+
     // ── POST /ingest — TTN webhook ────────────────────────────────────────
     if (request.method !== 'POST' || url.pathname !== '/ingest') {
       return new Response('Method not allowed', { status: 405 });
