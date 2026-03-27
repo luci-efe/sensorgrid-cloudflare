@@ -6,6 +6,7 @@ interface Env {
   DATABASE_URL: string;
   TTN_WEBHOOK_SECRET: string;
   RESEND_API_KEY: string;
+  TELEGRAM_TOKEN: string;
   DASHBOARD_ORIGIN?: string;
   NEON_AUTH_BASE_URL?: string;
 }
@@ -229,6 +230,40 @@ function approvalEmailHtml(opts: {
   return { subject, html };
 }
 
+// ── Telegram ──────────────────────────────────────────────────────────────
+
+async function sendTelegram(chatIds: string[], text: string, env: Env): Promise<void> {
+  if (!env.TELEGRAM_TOKEN || chatIds.length === 0) return;
+  for (const chatId of chatIds) {
+    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId.trim(), text, parse_mode: 'HTML' }),
+    });
+  }
+}
+
+function alertTelegramText(opts: {
+  ruleName: string; deviceName: string; metric: string; value: number;
+  threshold: number; operator: string; tier: 1 | 2; triggeredAt: string;
+}): string {
+  const { ruleName, deviceName, metric, value, threshold, operator, tier, triggeredAt } = opts;
+  const opLabel = operator === 'gt' ? '>' : operator === 'lt' ? '<' : '=';
+  const ts = new Date(triggeredAt).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' });
+  const header = tier === 2 ? '🚨 <b>ALERTA PERSISTENTE</b>' : '⚠️ <b>NUEVA ALERTA</b>';
+  const desc = tier === 2
+    ? 'Esta alerta lleva más de 30 min activa sin resolverse.'
+    : 'Se ha detectado una condición fuera de rango.';
+  return `${header}\n${desc}\n\n` +
+    `<b>Regla:</b> ${ruleName}\n` +
+    `<b>Dispositivo:</b> ${deviceName}\n` +
+    `<b>Métrica:</b> ${metric}\n` +
+    `<b>Valor:</b> ${value.toFixed(2)}\n` +
+    `<b>Umbral:</b> ${opLabel} ${threshold}\n` +
+    `<b>Detectado:</b> ${ts}\n\n` +
+    `<i>Mensaje automático — SensorGrid</i>`;
+}
+
 // ── Stale data check (cron) ────────────────────────────────────────────────
 
 async function checkStaleDevices(env: Env): Promise<void> {
@@ -277,13 +312,20 @@ async function checkStaleDevices(env: Env): Promise<void> {
     `;
     if (!inserted[0]) continue;
 
-    // Get all enabled alert rules that have tier1 emails configured
+    // Get all enabled alert rules that have tier1 emails or telegram configured
     const emailRules = await sql`
       SELECT DISTINCT UNNEST(email_tier1) AS email
       FROM alert_rules WHERE enabled = true AND array_length(email_tier1, 1) > 0
     `;
     const emails = emailRules.map(r => String(r['email'])).filter(Boolean);
-    if (emails.length === 0) continue;
+
+    const tgRules = await sql`
+      SELECT DISTINCT UNNEST(telegram_tier1) AS chat_id
+      FROM alert_rules WHERE enabled = true AND array_length(telegram_tier1, 1) > 0
+    `;
+    const tgChatIds = tgRules.map(r => String(r['chat_id'])).filter(Boolean);
+
+    if (emails.length === 0 && tgChatIds.length === 0) continue;
 
     const deviceName = device['name'] ?? devEui;
     const fridgeLabel = device['fridge_label'] ?? '';
@@ -307,6 +349,15 @@ async function checkStaleDevices(env: Env): Promise<void> {
         <p style="margin:16px 0 0;font-size:12px;color:#6b8ab0;">Mensaje automático del sistema SensorGrid.</p>
       </div>`;
     await sendEmail(emails, subject, html, env);
+
+    if (tgChatIds.length > 0) {
+      const tgText = `📡 <b>SENSOR SIN DATOS</b>\nUn sensor ha dejado de enviar datos.\n\n` +
+        `<b>Dispositivo:</b> ${deviceName}${fridgeLabel ? ` (${fridgeLabel})` : ''}\n` +
+        `<b>DEV EUI:</b> <code>${devEui.toUpperCase()}</code>\n` +
+        `<b>Último dato:</b> ${lastSeen}\n\n` +
+        `<i>Mensaje automático — SensorGrid</i>`;
+      await sendTelegram(tgChatIds, tgText, env);
+    }
   }
 
   // Resolve stale_data alerts for devices that are now sending data again
@@ -463,13 +514,15 @@ export default {
       }
       const authUser = authResult;
 
-      // PATCH /api/alert-rules/bulk-email — set emails for ALL rules at once
+      // PATCH /api/alert-rules/bulk-notifications — set emails/telegram for ALL rules at once
       if (url.pathname === '/api/alert-rules/bulk-email') {
         if (authUser.role !== 'admin') return new Response('Forbidden', { status: 403, headers: hdrs });
         const body = await request.json() as {
           email_tier1?: string[];
           email_tier2?: string[];
           email_tier2_delay_min?: number;
+          telegram_tier1?: string[];
+          telegram_tier2?: string[];
         };
         if (Array.isArray(body.email_tier1)) {
           await sql`UPDATE alert_rules SET email_tier1 = ${body.email_tier1 as string[]}`;
@@ -479,6 +532,12 @@ export default {
         }
         if (body.email_tier2_delay_min !== undefined) {
           await sql`UPDATE alert_rules SET email_tier2_delay_min = ${parseInt(String(body.email_tier2_delay_min), 10)}`;
+        }
+        if (Array.isArray(body.telegram_tier1)) {
+          await sql`UPDATE alert_rules SET telegram_tier1 = ${body.telegram_tier1 as string[]}`;
+        }
+        if (Array.isArray(body.telegram_tier2)) {
+          await sql`UPDATE alert_rules SET telegram_tier2 = ${body.telegram_tier2 as string[]}`;
         }
         const rows = await sql`SELECT * FROM alert_rules ORDER BY id`;
         return new Response(JSON.stringify(rows), { headers: hdrs });
@@ -505,6 +564,12 @@ export default {
         }
         if (Array.isArray(body.email_tier2)) {
           await sql`UPDATE alert_rules SET email_tier2 = ${body.email_tier2 as string[]} WHERE id = ${id}`;
+        }
+        if (Array.isArray(body.telegram_tier1)) {
+          await sql`UPDATE alert_rules SET telegram_tier1 = ${body.telegram_tier1 as string[]} WHERE id = ${id}`;
+        }
+        if (Array.isArray(body.telegram_tier2)) {
+          await sql`UPDATE alert_rules SET telegram_tier2 = ${body.telegram_tier2 as string[]} WHERE id = ${id}`;
         }
 
         const rows = await sql`SELECT * FROM alert_rules WHERE id = ${id}`;
@@ -705,14 +770,20 @@ export default {
           const eventId      = inserted[0]['id'];
           const triggeredAt2 = inserted[0]['triggered_at'] as string;
 
+          const alertOpts = {
+            ruleName: String(rule.name ?? rule.metric), devEui, deviceName, metric: String(rule.metric),
+            value, threshold: Number(rule.threshold), operator: String(rule.operator),
+            tier: 1 as const, triggeredAt: triggeredAt2,
+          };
           if ((rule.email_tier1 as string[])?.length > 0) {
-            const { subject, html } = alertEmailHtml({
-              ruleName: String(rule.name ?? rule.metric), devEui, deviceName, metric: String(rule.metric),
-              value, threshold: Number(rule.threshold), operator: String(rule.operator),
-              tier: 1, triggeredAt: triggeredAt2,
-            });
+            const { subject, html } = alertEmailHtml(alertOpts);
             await sendEmail(rule.email_tier1 as string[], subject, html, env);
             await sql`UPDATE alert_events SET tier1_sent_at = NOW() WHERE id = ${eventId}`;
+          }
+          if ((rule.telegram_tier1 as string[])?.length > 0) {
+            const tgText = alertTelegramText(alertOpts);
+            await sendTelegram(rule.telegram_tier1 as string[], tgText, env);
+            await sql`UPDATE alert_events SET tg_tier1_sent_at = NOW() WHERE id = ${eventId}`;
           }
         } else {
           const ev = existing[0];
@@ -720,14 +791,22 @@ export default {
           const ageMin   = (Date.now() - new Date(ev['triggered_at'] as string).getTime()) / 60000;
           const delayMin = rule.email_tier2_delay_min ?? 30;
 
-          if (!ev['tier2_sent_at'] && ageMin >= delayMin && (rule.email_tier2 as string[])?.length > 0) {
-            const { subject, html } = alertEmailHtml({
+          if (ageMin >= delayMin) {
+            const escalateOpts = {
               ruleName: String(rule.name ?? rule.metric), devEui, deviceName, metric: String(rule.metric),
               value, threshold: Number(rule.threshold), operator: String(rule.operator),
-              tier: 2, triggeredAt: ev['triggered_at'] as string,
-            });
-            await sendEmail(rule.email_tier2 as string[], subject, html, env);
-            await sql`UPDATE alert_events SET tier2_sent_at = NOW() WHERE id = ${ev['id']}`;
+              tier: 2 as const, triggeredAt: ev['triggered_at'] as string,
+            };
+            if (!ev['tier2_sent_at'] && (rule.email_tier2 as string[])?.length > 0) {
+              const { subject, html } = alertEmailHtml(escalateOpts);
+              await sendEmail(rule.email_tier2 as string[], subject, html, env);
+              await sql`UPDATE alert_events SET tier2_sent_at = NOW() WHERE id = ${ev['id']}`;
+            }
+            if (!ev['tg_tier2_sent_at'] && (rule.telegram_tier2 as string[])?.length > 0) {
+              const tgText = alertTelegramText(escalateOpts);
+              await sendTelegram(rule.telegram_tier2 as string[], tgText, env);
+              await sql`UPDATE alert_events SET tg_tier2_sent_at = NOW() WHERE id = ${ev['id']}`;
+            }
           }
 
           await sql`UPDATE alert_events SET value = ${value} WHERE id = ${ev['id']}`;

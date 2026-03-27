@@ -50,6 +50,8 @@ export type AlertRule = {
 	email_tier1: string[];
 	email_tier2: string[];
 	email_tier2_delay_min: number;
+	telegram_tier1: string[];
+	telegram_tier2: string[];
 	created_at: string;
 };
 
@@ -63,6 +65,8 @@ export type AlertEvent = {
 	resolved_at: string | null;
 	tier1_sent_at: string | null;
 	tier2_sent_at: string | null;
+	tg_tier1_sent_at: string | null;
+	tg_tier2_sent_at: string | null;
 	rule_name?: string | null;
 };
 
@@ -122,6 +126,8 @@ export async function patchAlertRulesBulkEmail(updates: {
 	email_tier1?: string[];
 	email_tier2?: string[];
 	email_tier2_delay_min?: number;
+	telegram_tier1?: string[];
+	telegram_tier2?: string[];
 }): Promise<AlertRule[]> {
 	return patch<AlertRule[]>('/api/alert-rules/bulk-email', updates);
 }
