@@ -41,8 +41,10 @@ const ALLOWED_ORIGINS = [
 
 function resolveOrigin(request: Request, env: Env): string {
   const reqOrigin = request.headers.get('Origin') ?? '';
-  if (ALLOWED_ORIGINS.includes(reqOrigin)) return reqOrigin;
-  return env.DASHBOARD_ORIGIN ?? (reqOrigin || '*');
+  const allowed = [...ALLOWED_ORIGINS];
+  if (env.DASHBOARD_ORIGIN) allowed.push(env.DASHBOARD_ORIGIN);
+  // Only reflect origins we explicitly trust — never reflect arbitrary origins with credentials
+  return allowed.includes(reqOrigin) ? reqOrigin : allowed[0] ?? '';
 }
 
 function corsHeaders(env: Env, request?: Request): Record<string, string> {
@@ -120,6 +122,7 @@ async function handleAuthProxy(request: Request, env: Env): Promise<Response> {
 async function getAuthUser(
   request: Request,
   sql: NeonQueryFunction<false, false>,
+  env?: Env,
 ): Promise<AuthUser | null> {
   const authHeader = request.headers.get('Authorization');
   if (!authHeader?.startsWith('Bearer ')) return null;
@@ -158,6 +161,12 @@ async function getAuthUser(
         INSERT INTO user_approvals (user_id, status) VALUES (${userId}::uuid, 'pending')
         ON CONFLICT (user_id) DO NOTHING
       `;
+
+      // Notify admins about the new signup (fire-and-forget)
+      if (env) {
+        notifyAdminsNewSignup(sql, env, name, email).catch(() => {});
+      }
+
       return { status: 'pending' };
     }
 
@@ -166,9 +175,16 @@ async function getAuthUser(
       return { status: 'ok', userId, role, name, email };
     }
     return { status: approvalStatus === 'rejected' ? 'rejected' : 'pending' };
-  } catch {
+  } catch (err) {
+    console.error('getAuthUser error:', err);
     return null;
   }
+}
+
+// ── HTML escaping ─────────────────────────────────────────────────────────
+
+function esc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // ── Email (Resend) ─────────────────────────────────────────────────────────
@@ -198,8 +214,8 @@ function alertEmailHtml(opts: {
         ${tier === 2 ? 'Esta alerta lleva más de 30 minutos activa sin resolverse.' : 'Se ha detectado una condición fuera de rango.'}
       </p>
       <table style="width:100%;border-collapse:collapse;font-size:14px;">
-        <tr><td style="padding:6px 0;color:#6b8ab0;">Regla</td><td style="padding:6px 0;font-weight:600;">${ruleName}</td></tr>
-        <tr><td style="padding:6px 0;color:#6b8ab0;">Dispositivo</td><td style="padding:6px 0;font-weight:600;">${deviceName}</td></tr>
+        <tr><td style="padding:6px 0;color:#6b8ab0;">Regla</td><td style="padding:6px 0;font-weight:600;">${esc(ruleName)}</td></tr>
+        <tr><td style="padding:6px 0;color:#6b8ab0;">Dispositivo</td><td style="padding:6px 0;font-weight:600;">${esc(deviceName)}</td></tr>
         <tr><td style="padding:6px 0;color:#6b8ab0;">Métrica</td><td style="padding:6px 0;">${metric}</td></tr>
         <tr><td style="padding:6px 0;color:#6b8ab0;">Valor</td><td style="padding:6px 0;color:#ef4444;font-weight:700;">${value.toFixed(2)}</td></tr>
         <tr><td style="padding:6px 0;color:#6b8ab0;">Umbral</td><td style="padding:6px 0;">${opLabel} ${threshold}</td></tr>
@@ -220,7 +236,7 @@ function approvalEmailHtml(opts: {
       <h2 style="margin:0 0 8px;color:${approved ? '#22c55e' : '#ef4444'};">
         ${approved ? '✅ Cuenta aprobada' : '❌ Cuenta rechazada'}
       </h2>
-      <p style="margin:0 0 16px;color:#6b8ab0;font-size:14px;">Hola ${userName},</p>
+      <p style="margin:0 0 16px;color:#6b8ab0;font-size:14px;">Hola ${esc(userName)},</p>
       ${approved
         ? `<p style="color:#e8edf5;font-size:14px;">Tu cuenta en SensorGrid ha sido aprobada. Ya puedes iniciar sesión y acceder al panel de monitoreo.</p>`
         : `<p style="color:#e8edf5;font-size:14px;">Tu solicitud de acceso a SensorGrid ha sido rechazada.${reason ? ` Motivo: ${reason}` : ''}</p>`
@@ -234,13 +250,13 @@ function approvalEmailHtml(opts: {
 
 async function sendTelegram(chatIds: string[], text: string, env: Env): Promise<void> {
   if (!env.TELEGRAM_TOKEN || chatIds.length === 0) return;
-  for (const chatId of chatIds) {
-    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
+  await Promise.allSettled(chatIds.map(chatId =>
+    fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId.trim(), text, parse_mode: 'HTML' }),
-    });
-  }
+    })
+  ));
 }
 
 function alertTelegramText(opts: {
@@ -255,13 +271,70 @@ function alertTelegramText(opts: {
     ? 'Esta alerta lleva más de 30 min activa sin resolverse.'
     : 'Se ha detectado una condición fuera de rango.';
   return `${header}\n${desc}\n\n` +
-    `<b>Regla:</b> ${ruleName}\n` +
-    `<b>Dispositivo:</b> ${deviceName}\n` +
-    `<b>Métrica:</b> ${metric}\n` +
+    `<b>Regla:</b> ${esc(ruleName)}\n` +
+    `<b>Dispositivo:</b> ${esc(deviceName)}\n` +
+    `<b>Métrica:</b> ${esc(metric)}\n` +
     `<b>Valor:</b> ${value.toFixed(2)}\n` +
     `<b>Umbral:</b> ${opLabel} ${threshold}\n` +
     `<b>Detectado:</b> ${ts}\n\n` +
     `<i>Mensaje automático — SensorGrid</i>`;
+}
+
+// ── Admin notification on new signup ──────────────────────────────────────
+
+async function notifyAdminsNewSignup(
+  sql: NeonQueryFunction<false, false>,
+  env: Env,
+  userName: string,
+  userEmail: string,
+): Promise<void> {
+  // Get admin emails
+  const admins = await sql`
+    SELECT email FROM neon_auth.user WHERE role = 'admin'
+  `;
+  const adminEmails = admins.map(r => String(r['email'])).filter(Boolean);
+
+  const dashboardUrl = env.DASHBOARD_ORIGIN ?? 'https://sensorgrid.site';
+  const ts = new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' });
+
+  // Email notification
+  if (adminEmails.length > 0) {
+    const subject = `[SensorGrid] Nueva solicitud de acceso: ${userName || userEmail}`;
+    const html = `
+      <div style="font-family:sans-serif;max-width:480px;background:#07101f;color:#e8edf5;padding:24px;border-radius:12px;border:1px solid #1a3a5c;">
+        <h2 style="margin:0 0 8px;color:#3b82f6;">👤 Nueva solicitud de acceso</h2>
+        <p style="margin:0 0 16px;color:#6b8ab0;font-size:14px;">
+          Un nuevo usuario se ha registrado y requiere aprobación.
+        </p>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+          <tr><td style="padding:6px 0;color:#6b8ab0;">Nombre</td><td style="padding:6px 0;font-weight:600;">${userName || '—'}</td></tr>
+          <tr><td style="padding:6px 0;color:#6b8ab0;">Correo</td><td style="padding:6px 0;font-weight:600;">${userEmail}</td></tr>
+          <tr><td style="padding:6px 0;color:#6b8ab0;">Fecha</td><td style="padding:6px 0;">${ts}</td></tr>
+        </table>
+        <p style="margin:16px 0 0;">
+          <a href="${dashboardUrl}/config" style="color:#3b82f6;font-size:14px;">Aprobar o rechazar en el panel →</a>
+        </p>
+        <p style="margin:12px 0 0;font-size:12px;color:#6b8ab0;">Mensaje automático del sistema SensorGrid.</p>
+      </div>`;
+    await sendEmail(adminEmails, subject, html, env);
+  }
+
+  // Telegram notification to admins (use tier1 from any alert rule)
+  const tgRules = await sql`
+    SELECT DISTINCT UNNEST(telegram_tier1) AS chat_id
+    FROM alert_rules WHERE enabled = true AND array_length(telegram_tier1, 1) > 0
+  `;
+  const tgChatIds = tgRules.map(r => String(r['chat_id'])).filter(Boolean);
+
+  if (tgChatIds.length > 0) {
+    const tgText = `👤 <b>Nueva solicitud de acceso</b>\n\n` +
+      `<b>Nombre:</b> ${userName || '—'}\n` +
+      `<b>Correo:</b> ${userEmail}\n` +
+      `<b>Fecha:</b> ${ts}\n\n` +
+      `<a href="${dashboardUrl}/config">Aprobar en el panel →</a>\n\n` +
+      `<i>Mensaje automático — SensorGrid</i>`;
+    await sendTelegram(tgChatIds, tgText, env);
+  }
 }
 
 // ── Stale data check (cron) ────────────────────────────────────────────────
@@ -341,8 +414,8 @@ async function checkStaleDevices(env: Env): Promise<void> {
           Un sensor ha dejado de enviar datos al sistema.
         </p>
         <table style="width:100%;border-collapse:collapse;font-size:14px;">
-          <tr><td style="padding:6px 0;color:#6b8ab0;">Dispositivo</td><td style="padding:6px 0;font-weight:600;">${deviceName}</td></tr>
-          ${fridgeLabel ? `<tr><td style="padding:6px 0;color:#6b8ab0;">Refrigerador</td><td style="padding:6px 0;">${fridgeLabel}</td></tr>` : ''}
+          <tr><td style="padding:6px 0;color:#6b8ab0;">Dispositivo</td><td style="padding:6px 0;font-weight:600;">${esc(String(deviceName))}</td></tr>
+          ${fridgeLabel ? `<tr><td style="padding:6px 0;color:#6b8ab0;">Refrigerador</td><td style="padding:6px 0;">${esc(String(fridgeLabel))}</td></tr>` : ''}
           <tr><td style="padding:6px 0;color:#6b8ab0;">DEV EUI</td><td style="padding:6px 0;font-family:monospace;">${devEui.toUpperCase()}</td></tr>
           <tr><td style="padding:6px 0;color:#6b8ab0;">Último dato</td><td style="padding:6px 0;color:#f59e0b;font-weight:700;">${lastSeen}</td></tr>
         </table>
@@ -352,7 +425,7 @@ async function checkStaleDevices(env: Env): Promise<void> {
 
     if (tgChatIds.length > 0) {
       const tgText = `📡 <b>SENSOR SIN DATOS</b>\nUn sensor ha dejado de enviar datos.\n\n` +
-        `<b>Dispositivo:</b> ${deviceName}${fridgeLabel ? ` (${fridgeLabel})` : ''}\n` +
+        `<b>Dispositivo:</b> ${esc(String(deviceName))}${fridgeLabel ? ` (${esc(String(fridgeLabel))})` : ''}\n` +
         `<b>DEV EUI:</b> <code>${devEui.toUpperCase()}</code>\n` +
         `<b>Último dato:</b> ${lastSeen}\n\n` +
         `<i>Mensaje automático — SensorGrid</i>`;
@@ -395,7 +468,7 @@ export default {
 
     // ── GET routes (require auth) ────────────────────────────────────────
     if (request.method === 'GET') {
-      const authResult = await getAuthUser(request, sql);
+      const authResult = await getAuthUser(request, sql, env);
       const hdrs = corsHeaders(env, request);
 
       if (!authResult) return new Response('Unauthorized', { status: 401, headers: hdrs });
@@ -416,9 +489,14 @@ export default {
 
       if (url.pathname === '/api/readings') {
         const devEui   = url.searchParams.get('dev_eui');
+        if (!devEui) return new Response(JSON.stringify({ error: 'dev_eui is required' }), { status: 400, headers: hdrs });
         const since    = url.searchParams.get('since');
         const interval = url.searchParams.get('interval') ?? '24 hours';
         const bucket   = url.searchParams.get('bucket')   ?? '5 minutes';
+        const ALLOWED_INTERVALS = ['1 day', '7 days', '30 days', '24 hours'];
+        const ALLOWED_BUCKETS   = ['5 minutes', '15 minutes', '1 hour', '4 hours', '1 day'];
+        if (!ALLOWED_INTERVALS.includes(interval)) return new Response(JSON.stringify({ error: 'Invalid interval' }), { status: 400, headers: hdrs });
+        if (!ALLOWED_BUCKETS.includes(bucket)) return new Response(JSON.stringify({ error: 'Invalid bucket' }), { status: 400, headers: hdrs });
         const rows = since
           ? await sql`
               SELECT
@@ -502,7 +580,7 @@ export default {
 
     // ── PATCH routes (require auth) ──────────────────────────────────────
     if (request.method === 'PATCH') {
-      const authResult = await getAuthUser(request, sql);
+      const authResult = await getAuthUser(request, sql, env);
       const hdrs = corsHeaders(env, request);
 
       if (!authResult) return new Response('Unauthorized', { status: 401, headers: hdrs });
@@ -581,9 +659,13 @@ export default {
       if (userMatch) {
         if (authUser.role !== 'admin') return new Response('Forbidden', { status: 403, headers: hdrs });
         const userId = userMatch[1] ?? '';
+        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!UUID_RE.test(userId)) return new Response(JSON.stringify({ error: 'Invalid user ID' }), { status: 400, headers: hdrs });
         const body   = await request.json() as { role?: string; approval_status?: string; rejected_reason?: string };
 
         if (body.role !== undefined) {
+          if (!['admin', 'user'].includes(body.role))
+            return new Response(JSON.stringify({ error: 'Invalid role' }), { status: 400, headers: hdrs });
           await sql`
             UPDATE neon_auth.user SET role = ${body.role}
             WHERE id = ${userId}::uuid
@@ -644,7 +726,7 @@ export default {
 
     // ── GET /api/telegram/chat-ids — fetch recent chat IDs from bot updates
     if (request.method === 'GET' && url.pathname === '/api/telegram/chat-ids') {
-      const authResult = await getAuthUser(request, sql);
+      const authResult = await getAuthUser(request, sql, env);
       const hdrs = corsHeaders(env, request);
       if (!authResult || authResult.status !== 'ok')
         return new Response('Unauthorized', { status: 401, headers: hdrs });
@@ -672,7 +754,7 @@ export default {
 
     // ── POST /api/telegram/test — send a test message to verify chat ID ──
     if (request.method === 'POST' && url.pathname === '/api/telegram/test') {
-      const authResult = await getAuthUser(request, sql);
+      const authResult = await getAuthUser(request, sql, env);
       const hdrs = corsHeaders(env, request);
       if (!authResult || authResult.status !== 'ok')
         return new Response('Unauthorized', { status: 401, headers: hdrs });
@@ -687,7 +769,7 @@ export default {
         return new Response(JSON.stringify({ ok: false, error: 'TELEGRAM_TOKEN not configured' }), { status: 500, headers: hdrs });
 
       const text = `✅ <b>SensorGrid — Prueba de conexión</b>\n\n` +
-        `Este es un mensaje de prueba. Si lo recibes, tu chat ID (<code>${chat_id.trim()}</code>) está correctamente configurado.\n\n` +
+        `Este es un mensaje de prueba. Si lo recibes, tu chat ID (<code>${esc(chat_id.trim())}</code>) está correctamente configurado.\n\n` +
         `<i>Mensaje automático — SensorGrid</i>`;
 
       const tgRes = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`, {
@@ -709,7 +791,12 @@ export default {
     }
 
     const authHeader = request.headers.get('Authorization');
-    if (authHeader?.trim() !== `Bearer ${env.TTN_WEBHOOK_SECRET?.trim()}`) {
+    // Constant-time comparison to prevent timing attacks
+    const encoder = new TextEncoder();
+    const provided = encoder.encode(authHeader?.trim() ?? '');
+    const expected = encoder.encode(`Bearer ${env.TTN_WEBHOOK_SECRET?.trim()}`);
+    if (provided.byteLength !== expected.byteLength ||
+        !crypto.subtle.timingSafeEqual(provided, expected)) {
       return new Response('Unauthorized', { status: 401 });
     }
 
