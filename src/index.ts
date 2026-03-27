@@ -575,6 +575,29 @@ export default {
         return new Response(JSON.stringify(rows), { headers: hdrs });
       }
 
+      if (url.pathname === '/api/telegram/chat-ids') {
+        if (authUser.role !== 'admin')
+          return new Response('Forbidden', { status: 403, headers: hdrs });
+        if (!env.TELEGRAM_TOKEN)
+          return new Response(JSON.stringify({ chats: [] }), { headers: hdrs });
+
+        const tgRes = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/getUpdates?limit=100`);
+        const tgData = await tgRes.json() as { ok: boolean; result?: { message?: { chat?: { id: number; first_name?: string; username?: string } } }[] };
+
+        const seen = new Map<number, { id: number; name: string; username: string }>();
+        for (const update of tgData.result ?? []) {
+          const chat = update.message?.chat;
+          if (chat?.id && !seen.has(chat.id)) {
+            seen.set(chat.id, {
+              id: chat.id,
+              name: chat.first_name ?? '',
+              username: chat.username ?? '',
+            });
+          }
+        }
+        return new Response(JSON.stringify({ chats: [...seen.values()] }), { headers: hdrs });
+      }
+
       return new Response('Not found', { status: 404, headers: hdrs });
     }
 
@@ -722,34 +745,6 @@ export default {
       }
 
       return new Response('Not found', { status: 404, headers: hdrs });
-    }
-
-    // ── GET /api/telegram/chat-ids — fetch recent chat IDs from bot updates
-    if (request.method === 'GET' && url.pathname === '/api/telegram/chat-ids') {
-      const authResult = await getAuthUser(request, sql, env);
-      const hdrs = corsHeaders(env, request);
-      if (!authResult || authResult.status !== 'ok')
-        return new Response('Unauthorized', { status: 401, headers: hdrs });
-      if (authResult.role !== 'admin')
-        return new Response('Forbidden', { status: 403, headers: hdrs });
-      if (!env.TELEGRAM_TOKEN)
-        return new Response(JSON.stringify({ chats: [] }), { headers: hdrs });
-
-      const tgRes = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/getUpdates?limit=100`);
-      const tgData = await tgRes.json() as { ok: boolean; result?: { message?: { chat?: { id: number; first_name?: string; username?: string } } }[] };
-
-      const seen = new Map<number, { id: number; name: string; username: string }>();
-      for (const update of tgData.result ?? []) {
-        const chat = update.message?.chat;
-        if (chat?.id && !seen.has(chat.id)) {
-          seen.set(chat.id, {
-            id: chat.id,
-            name: chat.first_name ?? '',
-            username: chat.username ?? '',
-          });
-        }
-      }
-      return new Response(JSON.stringify({ chats: [...seen.values()] }), { headers: hdrs });
     }
 
     // ── POST /api/telegram/test — send a test message to verify chat ID ──

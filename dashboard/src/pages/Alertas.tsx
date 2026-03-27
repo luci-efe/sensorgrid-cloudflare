@@ -90,48 +90,72 @@ function TelegramChatPicker({ onSelect }: { onSelect: (id: string) => void }) {
   const [chats, setChats] = useState<TelegramChat[]>([])
   const [loading, setLoading] = useState(false)
   const [fetched, setFetched] = useState(false)
+  const [error, setError] = useState('')
 
   async function detect() {
     setLoading(true)
+    setError('')
     try {
       const result = await fetchTelegramChats()
       setChats(result)
       setFetched(true)
-    } catch { /* ignore */ }
-    setLoading(false)
+    } catch (e) {
+      setError((e as Error).message || 'Error al buscar chat IDs')
+      setFetched(true)
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (!fetched) {
     return (
-      <button
-        onClick={detect}
-        disabled={loading}
-        className="text-xs px-2 py-0.5 rounded border"
-        style={{ borderColor: 'var(--accent)', color: 'var(--accent)', cursor: loading ? 'not-allowed' : 'pointer' }}
-      >
-        {loading ? 'Buscando…' : 'Detectar chat IDs'}
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={detect}
+          disabled={loading}
+          className="text-xs px-2 py-0.5 rounded border"
+          style={{ borderColor: 'var(--accent)', color: 'var(--accent)', cursor: loading ? 'not-allowed' : 'pointer' }}
+        >
+          {loading ? 'Buscando…' : 'Detectar chat IDs'}
+        </button>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-xs" style={{ color: 'var(--danger)' }}>{error}</span>
+        <button onClick={() => { setFetched(false); setError('') }} className="text-xs" style={{ color: 'var(--accent)', cursor: 'pointer' }}>Reintentar</button>
+      </div>
     )
   }
 
   if (chats.length === 0) {
-    return <span className="text-xs" style={{ color: 'var(--muted)' }}>No se encontraron usuarios. Asegúrate de enviar /start al bot primero.</span>
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-xs" style={{ color: 'var(--muted)' }}>No se encontraron usuarios. Envía /start al bot primero.</span>
+        <button onClick={() => setFetched(false)} className="text-xs" style={{ color: 'var(--accent)', cursor: 'pointer' }}>Reintentar</button>
+      </div>
+    )
   }
 
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-xs" style={{ color: 'var(--muted)' }}>Usuarios detectados:</span>
       {chats.map(c => (
         <button
           key={c.id}
           onClick={() => onSelect(String(c.id))}
           className="text-xs px-2 py-0.5 rounded-full border"
           style={{ borderColor: 'var(--border)', color: 'var(--text)', cursor: 'pointer' }}
-          title={`Chat ID: ${c.id}`}
+          title={`Click para agregar chat ID: ${c.id}`}
         >
           {c.name || c.username || String(c.id)}
           <span className="ml-1" style={{ color: 'var(--muted)' }}>({c.id})</span>
         </button>
       ))}
+      <button onClick={() => setFetched(false)} className="text-xs" style={{ color: 'var(--accent)', cursor: 'pointer' }}>Actualizar</button>
     </div>
   )
 }
